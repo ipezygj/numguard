@@ -1,24 +1,34 @@
-# One-click deploy on Render (render.com): New + > Blueprint > point at this repo.
+# Render Blueprint: numguard (public API) + your own x402-rs facilitator (settles payments to your wallet).
 services:
   - type: web
     name: numguard
     runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /health
     envVars:
-      # Receiving wallet (public EVM address). Same address works on testnet and mainnet.
       - key: NUMGUARD_PAYTO
-        value: "0x75c5487C44E0EA83E5F2f692BF301500a40B836f"
-
-      # numguard's verifier is facilitator-AGNOSTIC — any x402 facilitator exposing /verify + /settle works.
-      # START ON TESTNET (free test-USDC): https://x402.org/facilitator   (network: base-sepolia)
-      # MAINNET, NON-COINBASE options:
-      #   - self-host  x402-rs  (open-source Rust, no third party — most sovereign) -> your own URL
-      #   - thirdweb   facilitator (hosted)     - needs a thirdweb key -> NUMGUARD_FACILITATOR_AUTH
-      #   - PayAI      facilitator (hosted, Base/Solana/Polygon)
-      - key: NUMGUARD_FACILITATOR_URL
-        sync: false        # set in the dashboard (testnet URL first)
+        value: "0x75c5487C44E0EA83E5F2f692BF301500a40B836f"   # your receiving wallet (public)
       - key: NUMGUARD_NETWORK
-        value: base-sepolia   # test with test-USDC first; change to 'base' for real payments
+        value: base-sepolia        # testnet first; change to 'base' for real money
+      - key: NUMGUARD_FACILITATOR_URL
+        fromService:               # auto-wired to the facilitator service's URL
+          type: web
+          name: x402-facilitator
+          property: url
       - key: NUMGUARD_FACILITATOR_AUTH
-        sync: false        # only if your chosen facilitator needs an auth header (e.g. thirdweb key)
+        sync: false                # not needed for your own facilitator
+
+  # Your own facilitator. Needs FACILITATOR_PRIVATE_KEY = a DEDICATED gas wallet (small Base-Sepolia ETH).
+  - type: web
+    name: x402-facilitator
+    runtime: docker
+    dockerfilePath: ./facilitator/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: FACILITATOR_PRIVATE_KEY
+        sync: false                # set in the dashboard — NEVER commit a private key
+      - key: HOST
+        value: "0.0.0.0"
