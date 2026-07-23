@@ -263,6 +263,43 @@ def issue_receipt(
     return _billed(api_key, "issue_receipt", run)
 
 
+@mcp.tool(annotations=_ann("Verify an agent action-trace was guarded, issue a receipt"))
+def verify_guard_trace(
+    api_key: ApiKey,
+    trace: Annotated[list, Field(description="The agent's ordered action list — each item a dict like "
+                                             "{'kind':'command','command':'curl ...'} / {'kind':'file_read',"
+                                             "'path':'~/.ssh/id_rsa'} / {'kind':'fetch','url':'https://...'} / "
+                                             "{'kind':'untrusted','value':'source'}.")],
+    task: Annotated[str, Field(description="The user's original task (lets off-task actions be surfaced).")] = "",
+) -> Receipt:
+    """Recompute the BEHAVIOURAL-guard verdict over an agent's action-trace and hand back a portable,
+    signed receipt (Ed25519) — proof the run was guarded and what the guard decided. Catches what a
+    code scanner can't: a cross-call exfiltration chain (read a secret → later send it to a non-
+    allowlisted host) or an action taken right after ingesting untrusted content (prompt-injection
+    consequence). numguard **recomputes** the verdict from the trace — it never signs a verdict you
+    supply — so the receipt is real evidence, verifiable by anyone with only the public key.
+
+    Use when: an agent needs to PROVE a run passed the behavioural guard (compliance, audit, handing
+    verified work to another party)."""
+    try:
+        from agent_guard.session import evaluate_sequence
+        from agent_guard import receipt as _ag_rcpt
+    except Exception:
+        return {"payload": None, "signature": None,
+                "verdict": "agent-guard engine not installed on this server. Install `numguard[guard]` "
+                           "(pulls agent-tripwire) to enable guard-trace receipts."}
+    priv, pub = _issuer()
+
+    def run():
+        # numguard recomputes the verdict itself (client can't forge it), then signs the guard-shaped
+        # payload with numguard's issuer key. agent-guard's receipt scheme is identical to numguard's,
+        # so this receipt verifies with numguard.verify_receipt / _rcpt.verify_receipt unchanged.
+        verdict = evaluate_sequence(trace or [], task=task)
+        return _ag_rcpt.issue_receipt(verdict, priv, pub)
+
+    return _billed(api_key, "verify_guard_trace", run)
+
+
 @mcp.tool(annotations=_ann("Check your free calls + credit balance"))
 def balance(api_key: ApiKey) -> Balance:
     """Your remaining free calls and prepaid credit balance."""

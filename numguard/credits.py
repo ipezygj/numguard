@@ -27,6 +27,7 @@ PRICES = {
     "audit_leaderboard": 5,
     "verify_backtest": 3,
     "issue_receipt": 1,       # cheap add-on; the receipt is the sticky part
+    "verify_guard_trace": 3,  # recompute an agent action-trace's behavioural-guard verdict + sign it
 }
 FREE_TIER_CALLS = 25          # per key, before any charge — let the agent feel the value first
 
