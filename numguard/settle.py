@@ -29,7 +29,7 @@ _SEEN_TTL = 180.0
 CHAIN_IDS = {"base": 8453, "base-sepolia": 84532}
 _RPCS = {"base": "https://mainnet.base.org", "base-sepolia": "https://sepolia.base.org"}
 
-# minimal USDC ABI: EIP-3009 transferWithAuthorization (v,r,s variant) + balanceOf
+# minimal USDC ABI: EIP-3009 transferWithAuthorization (v,r,s variant) + balanceOf + authorizationState + Transfer
 _ABI = [
     {"name": "transferWithAuthorization", "type": "function", "stateMutability": "nonpayable",
      "inputs": [{"name": "from", "type": "address"}, {"name": "to", "type": "address"},
@@ -39,6 +39,13 @@ _ABI = [
      "outputs": []},
     {"name": "balanceOf", "type": "function", "stateMutability": "view",
      "inputs": [{"name": "account", "type": "address"}], "outputs": [{"name": "", "type": "uint256"}]},
+    {"name": "authorizationState", "type": "function", "stateMutability": "view",
+     "inputs": [{"name": "authorizer", "type": "address"}, {"name": "nonce", "type": "bytes32"}],
+     "outputs": [{"name": "", "type": "bool"}]},
+    {"name": "Transfer", "type": "event", "anonymous": False,
+     "inputs": [{"name": "from", "type": "address", "indexed": True},
+                {"name": "to", "type": "address", "indexed": True},
+                {"name": "value", "type": "uint256", "indexed": False}]},
 ]
 
 
@@ -125,11 +132,16 @@ def self_verifier():
 
             # 3+4. dedup, balance-gate, and broadcast under the lock (one authorization broadcast at most once;
             # gas nonce serialized). The receipt wait happens AFTER the lock is released.
+            payer = Web3.to_checksum_address(auth["from"])
             with _SETTLE_LOCK:
                 seen = _SEEN_NONCES.get(nonce_key)
                 if seen is not None and (time.time() - seen) < _SEEN_TTL:
                     return Settlement(False, reason="payment already being processed")
-                bal = token.functions.balanceOf(Web3.to_checksum_address(auth["from"])).call()
+                # M6: if this EIP-3009 nonce is already consumed on-chain, transferWithAuthorization would
+                # revert — don't broadcast a doomed tx and burn gas.
+                if token.functions.authorizationState(payer, nonce_b).call():
+                    return Settlement(False, reason="authorization already used")
+                bal = token.functions.balanceOf(payer).call()
                 if bal < need:   # unfunded payer: don't mark the nonce seen, so a funded retry can proceed
                     return Settlement(False, reason=f"insufficient funds: payer USDC balance {bal} < {need}")
                 _SEEN_NONCES[nonce_key] = time.time()
@@ -144,6 +156,19 @@ def self_verifier():
             rcpt = w3.eth.wait_for_transaction_receipt(txh, timeout=90)
             if rcpt.get("status") != 1:
                 return Settlement(False, reason="settlement failed")   # opaque: no internal detail to the caller
+            # M7: don't trust a single RPC's status flag alone — confirm the receipt actually carries a USDC
+            # Transfer(payer -> payTo) of >= need before serving.
+            got = 0
+            try:
+                from web3.logs import DISCARD
+                for ev in token.events.Transfer().process_receipt(rcpt, errors=DISCARD):
+                    a = ev["args"]
+                    if a["from"] == payer and a["to"] == pay_to:
+                        got += int(a["value"])
+            except Exception:
+                got = -1
+            if got < need:
+                return Settlement(False, reason="settlement unconfirmed")
             return Settlement(True, tx=txh.hex(), amount_units=need)
         except Exception:
             return Settlement(False, reason="settlement error")        # opaque: never leak the RPC URL / internals

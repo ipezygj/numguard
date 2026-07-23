@@ -8,8 +8,16 @@ to top up, so the agent can react in-loop.
 JSON-file ledger (swap for a DB in production). Charges are recorded so every spend is auditable.
 """
 from __future__ import annotations
-import json, os, threading, time
+import json, os, secrets, threading, time
 from pathlib import Path
+
+_MIN_PAID_KEY = 20   # a key that holds a PAID balance must be unguessable (free tier stays open to any string)
+
+
+def mint_key() -> str:
+    """A high-entropy api_key for holding a paid credit balance — so credits never sit on a guessable string
+    that anyone could name to spend them. Issue this to a user when they top up."""
+    return "ng_" + secrets.token_urlsafe(24)
 
 # per-call price in credits (1 credit = $0.01 by convention; set your own). Verification is cheap; the value
 # is running ALL of it, on a number the agent is too close to. Generous free tier below drives adoption.
@@ -86,6 +94,10 @@ def balance(api_key: str) -> dict:
 
 
 def topup(api_key: str, credits: int) -> dict:
+    # a paid balance must live on an unguessable key (else anyone who names it can spend the credits);
+    # the free tier stays open to any string. Issue keys with mint_key().
+    if len(str(api_key)) < _MIN_PAID_KEY:
+        raise ValueError(f"top up a high-entropy key (>= {_MIN_PAID_KEY} chars) — use credits.mint_key()")
     credits = max(0, int(credits))          # never accept a negative top-up (would drain the balance)
     with _LOCK:
         d = _read(for_write=True); a = _acct(d, api_key); a["balance"] += credits
@@ -136,7 +148,7 @@ def _selftest():
     import tempfile
     global _STORE
     _STORE = Path(tempfile.mkdtemp()) / "ledger.json"
-    k = "test_key_abc"
+    k = mint_key()
     # free tier first
     for _ in range(FREE_TIER_CALLS):
         assert charge(k, "verify_claim")["ok"]

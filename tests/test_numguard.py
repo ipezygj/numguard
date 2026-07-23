@@ -56,7 +56,7 @@ def test_receipt_verifies_and_detects_tamper():
 def test_credits_free_tier_then_payment_required(monkeypatch):
     store = Path(tempfile.mkdtemp()) / "ledger.json"
     monkeypatch.setattr(credits, "_STORE", store)
-    k = "k1"
+    k = credits.mint_key()          # a paid balance needs a high-entropy key
     for _ in range(credits.FREE_TIER_CALLS):
         assert credits.charge(k, "verify_backtest")["ok"]
     assert credits.charge(k, "verify_backtest").get("payment_required")
@@ -198,9 +198,13 @@ def test_credits_reject_negative_topup_and_survive_concurrency(tmp_path, monkeyp
     from pathlib import Path
     from numguard import credits
     monkeypatch.setattr(credits, "_STORE", Path(tmp_path) / "l.json")
-    credits.topup("k", 10)
-    credits.topup("k", -999)                                            # negative top-up must be ignored
-    assert credits.balance("k")["balance"] == 10
+    kk = credits.mint_key()
+    credits.topup(kk, 10)
+    credits.topup(kk, -999)                                             # negative top-up must be ignored
+    assert credits.balance(kk)["balance"] == 10
+    import pytest
+    with pytest.raises(ValueError):                                    # a paid balance can't sit on a weak key
+        credits.topup("k", 10)
     # 50 concurrent free-tier charges on a fresh key -> exactly FREE_TIER_CALLS granted (no race bypass)
     results = []
     ts = [threading.Thread(target=lambda: results.append(credits.charge("race", "verify_claim"))) for _ in range(50)]
