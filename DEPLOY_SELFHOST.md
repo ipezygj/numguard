@@ -49,3 +49,21 @@ round-tripped against a live agent.)
 - Base mainnet `eip155:8453`, USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 - Base Sepolia `eip155:84532`, USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
 - Public RPCs in `facilitator/config.json` (`mainnet.base.org` / `sepolia.base.org`) — swap for a private RPC (Alchemy/Ankr) if you hit rate limits.
+
+## Hardening (a live, real-money endpoint)
+
+**Built into numguard (numguard/rest_api.py):**
+- **Rate limiting** — 60 req/60s per client IP (429 over that).
+- **Input caps** — list/matrix payloads capped at 5,000 items, `n_boot` at 5,000, body at 256 KB, so a huge payload can't pin the CPU.
+- **Clean errors** — bad input returns a 400 (never a 500 with a traceback); unexpected errors return a bare 500.
+
+**The facilitator's public exposure (the one real risk to know):**
+A Render *web* service always has a public URL. An attacker who finds the facilitator's URL could POST valid, self-signed payments to `/settle` and make it broadcast them — **burning your gas wallet's ETH** (a griefing drain; they can't redirect your USDC, only waste your gas). Mitigate:
+- **Keep the gas wallet balance small** (a few dollars) — that caps the maximum loss, and it's cheap to top up.
+- **Watch the gas balance** on Basescan; if it drains oddly, rotate the key + redeploy.
+- **On a paid Render plan, make the facilitator a Private Service** (`type: pserv`) so it has *no* public URL — numguard still reaches it internally. (Private services aren't on the free plan.)
+- Optionally restrict the facilitator to only settle payments whose `payTo` is your receiving wallet (if your facilitator build supports a recipient allowlist).
+
+**Keys & images:**
+- `FACILITATOR_PRIVATE_KEY` is a **dedicated** hot wallet (gas only), never your main/receiving wallet, only ever in the Render env — never committed, never shared.
+- Pin the facilitator image to a specific tag/digest (instead of `:latest`) once you've confirmed a working version, so an upstream image update can't silently break it.

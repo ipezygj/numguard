@@ -93,3 +93,31 @@ def test_x402_facilitator_verifier_no_url_refuses():
     v = x402.facilitator_verifier()
     s = v("some-x-payment", x402.payment_required("verify_backtest", 0.03, "0xPay"))
     assert not s.valid
+
+
+# ---- hardening ----
+def test_hardening_rejects_oversized_and_bad_input(monkeypatch):
+    import os
+    monkeypatch.delenv("NUMGUARD_PAYTO", raising=False)
+    import importlib
+    from numguard import rest_api
+    importlib.reload(rest_api)
+    from starlette.testclient import TestClient
+    c = TestClient(rest_api.app)
+    # oversized list -> 400 (not a CPU-pinning run)
+    assert c.post("/calibrate_judge", json={"judge_caught": [True]*6000, "truth_caught": [True]*6000}).status_code == 400
+    # missing required field -> clean 400, never a 500 traceback
+    assert c.post("/verify_backtest", json={}).status_code == 400
+    # valid still works
+    assert c.post("/verify_backtest", json={"sr": 0.12, "T": 250, "n_trials": 100}).status_code == 200
+
+
+def test_rate_limit_returns_429(monkeypatch):
+    import importlib
+    from numguard import rest_api
+    importlib.reload(rest_api)
+    from starlette.testclient import TestClient
+    c = TestClient(rest_api.app)
+    hit_429 = any(c.post("/verify_model_gap", json={"n": 100, "p1": 0.8, "p2": 0.7}).status_code == 429
+                  for _ in range(rest_api.RATE_LIMIT + 5))
+    assert hit_429
