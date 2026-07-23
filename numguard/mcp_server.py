@@ -11,6 +11,7 @@ import json, os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt, _limits
 
@@ -19,7 +20,14 @@ try:                                   # optional: full leaderboard audit needs 
 except Exception:
     audit_matrix = None
 
-mcp = FastMCP("numguard")
+# DNS-rebinding protection guards LOCALHOST servers from malicious web pages; this is a PUBLIC HTTP MCP server
+# (reached by arbitrary hosts/proxies, e.g. Render, Smithery), and its tools are pure metered computation with
+# no local/privileged access — so the Host/Origin allowlist would only reject legitimate traffic. Off by
+# default; set NUMGUARD_MCP_HOSTS (comma-separated) to re-enable a strict allowlist instead.
+_hosts = [h.strip() for h in os.environ.get("NUMGUARD_MCP_HOSTS", "").split(",") if h.strip()]
+_security = (TransportSecuritySettings(allowed_hosts=_hosts, allowed_origins=_hosts)
+             if _hosts else TransportSecuritySettings(enable_dns_rebinding_protection=False))
+mcp = FastMCP("numguard", transport_security=_security)
 
 # ---- issuer key for receipts (persistent) ----
 _KEYFILE = Path(os.environ.get("NUMGUARD_ISSUER", Path.home() / ".numguard" / "issuer.json"))
