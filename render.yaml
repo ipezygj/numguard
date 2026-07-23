@@ -12,10 +12,10 @@ services:
       - key: NUMGUARD_NETWORK
         value: base-sepolia        # testnet first; change to 'base' for real money
       - key: NUMGUARD_FACILITATOR_URL
-        fromService:               # auto-wired to the facilitator service's URL
+        fromService:               # auto-wired to the facilitator (internal host:port; numguard adds http://)
           type: web
           name: x402-facilitator
-          property: url
+          property: hostport
       - key: NUMGUARD_FACILITATOR_AUTH
         sync: false                # not needed for your own facilitator
 

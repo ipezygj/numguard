@@ -81,6 +81,9 @@ def facilitator_verifier(facilitator_url: str = None):
 
     Requires `httpx` (ships with the mcp SDK). Never raises — a failed call = an unsettled Settlement."""
     facilitator_url = facilitator_url or os.environ.get("NUMGUARD_FACILITATOR_URL", "")
+    # allow a bare host:port (e.g. Render fromService 'hostport') — default to internal http
+    if facilitator_url and not facilitator_url.startswith(("http://", "https://")):
+        facilitator_url = "http://" + facilitator_url
 
     def verify(x_payment: str, challenge: dict) -> Settlement:
         if not facilitator_url:
