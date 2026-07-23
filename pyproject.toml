@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 receipts = ["cryptography>=41"]     # Ed25519 signed receipts (falls back to HMAC without it)
+settle = ["web3>=6"]                # numguard settles x402 payments on-chain itself (no external facilitator)
 leaderboard = ["evalgate @ git+https://github.com/ipezygj/evalgate"]  # optional: audit_leaderboard tool
 dev = ["pytest>=7"]
 

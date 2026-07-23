@@ -58,7 +58,10 @@ except Exception:
 
 PAYTO = os.environ.get("NUMGUARD_PAYTO", "")
 NETWORK = os.environ.get("NUMGUARD_NETWORK", "base")
-_VERIFIER = x402.facilitator_verifier()          # reads NUMGUARD_FACILITATOR_URL
+# Prefer numguard's own on-chain settlement (NUMGUARD_GAS_KEY set) — one service, no facilitator. Fall back to
+# an external x402 facilitator (NUMGUARD_FACILITATOR_URL) if that's how it's wired instead.
+from . import settle
+_VERIFIER = settle.self_verifier() or x402.facilitator_verifier()
 
 # path -> (tool name, price in USD, handler(body)->dict)
 ROUTES = {

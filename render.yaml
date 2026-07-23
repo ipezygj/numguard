@@ -1,4 +1,6 @@
-# Render Blueprint: numguard (public API) + your own x402-rs facilitator (settles payments to your wallet).
+# Render Blueprint: numguard — one public service that settles x402 payments on-chain itself.
+# No separate facilitator: numguard verifies the agent's signed USDC authorization and submits it to the USDC
+# contract, paying gas from NUMGUARD_GAS_KEY. USDC settles straight to NUMGUARD_PAYTO.
 services:
   - type: web
     name: numguard
@@ -11,24 +13,9 @@ services:
         value: "0x75c5487C44E0EA83E5F2f692BF301500a40B836f"   # your receiving wallet (public)
       - key: NUMGUARD_NETWORK
         value: base                # Base mainnet — real USDC
-      - key: NUMGUARD_FACILITATOR_URL
-        fromService:               # auto-wired to the facilitator (internal host:port; numguard adds http://)
-          type: web
-          name: x402-facilitator
-          property: hostport
-      - key: NUMGUARD_FACILITATOR_AUTH
-        sync: false                # not needed for your own facilitator
-
-  # Your own facilitator. Needs FACILITATOR_PRIVATE_KEY = a DEDICATED gas wallet (small Base-Sepolia ETH).
-  - type: web
-    name: x402-facilitator
-    runtime: docker
-    dockerfilePath: ./facilitator/Dockerfile
-    dockerContext: .
-    plan: free
-    healthCheckPath: /health
-    envVars:
-      - key: FACILITATOR_PRIVATE_KEY
-        sync: false                # set in the dashboard — NEVER commit a private key
-      - key: HOST
-        value: "0.0.0.0"
+      - key: NUMGUARD_GAS_KEY
+        sync: false                # DEDICATED gas wallet private key (small Base ETH) — set in the dashboard,
+                                   # NEVER commit. This is the same wallet you funded for gas; numguard uses it
+                                   # to broadcast settlements. Not your receiving wallet.
+      - key: NUMGUARD_RPC
+        sync: false                # optional: a private Base RPC (Alchemy/Ankr) if the public one rate-limits

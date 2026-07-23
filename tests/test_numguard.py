@@ -153,3 +153,28 @@ def test_mcp_payment_required_points_to_x402_endpoint(tmp_path, monkeypatch):
     for _ in range(credits.FREE_TIER_CALLS):
         credits.charge("convert-key2", "issue_receipt")
     assert credits.charge("convert-key2", "issue_receipt")["pay"]["endpoint"].endswith("/pricing")
+
+
+def test_self_verifier_absent_without_gas_key(monkeypatch):
+    monkeypatch.delenv("NUMGUARD_GAS_KEY", raising=False)
+    from numguard import settle
+    assert settle.available() is False
+    assert settle.self_verifier() is None          # no key -> caller falls back to refusing (never serve unpaid)
+
+
+def test_self_settle_never_clears_a_bad_signature(monkeypatch):
+    """Safety-critical: a payment whose signature doesn't recover to the payer must never settle."""
+    import pytest, base64, json, time, secrets
+    pytest.importorskip("eth_account")
+    monkeypatch.setenv("NUMGUARD_GAS_KEY", "0x" + secrets.token_hex(32))
+    monkeypatch.setenv("NUMGUARD_NETWORK", "base")
+    from numguard import x402, settle
+    ch = x402.payment_required("verify_backtest", 0.03, "0x75c5487C44E0EA83E5F2f692BF301500a40B836f", network="base")
+    auth = {"from": "0x000000000000000000000000000000000000dEaD", "to": ch["accepts"][0]["payTo"],
+            "value": "30000", "validAfter": "0", "validBefore": str(int(time.time()) + 3600),
+            "nonce": "0x" + secrets.token_hex(32)}
+    wire = {"x402Version": 1, "scheme": "exact", "network": "base",
+            "payload": {"signature": "0x" + "11" * 65, "authorization": auth}}
+    xp = base64.b64encode(json.dumps(wire).encode()).decode()
+    res = settle.self_verifier()(xp, ch)
+    assert res.valid is False                       # bogus signature -> refused, no funds move
