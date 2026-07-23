@@ -10,7 +10,7 @@ Config (env): NUMGUARD_PAYTO (your wallet, required to charge) · NUMGUARD_FACIL
 Run:  uvicorn numguard.rest_api:app --host 0.0.0.0 --port 8080
 """
 from __future__ import annotations
-import json, os, time
+import hmac, json, os, time
 from collections import deque, defaultdict
 
 from starlette.applications import Starlette
@@ -64,6 +64,7 @@ except Exception:
 
 PAYTO = os.environ.get("NUMGUARD_PAYTO", "")
 NETWORK = os.environ.get("NUMGUARD_NETWORK", "base")
+_ADMIN_KEY = os.environ.get("NUMGUARD_ADMIN_KEY", "")   # operator seed auth; unset => seeding DISABLED (fail closed)
 # Prefer numguard's own on-chain settlement (NUMGUARD_GAS_KEY set) — one service, no facilitator. Fall back to
 # an external x402 facilitator (NUMGUARD_FACILITATOR_URL) if that's how it's wired instead.
 from . import settle
@@ -221,9 +222,45 @@ async def receipt_by_digest(request):
     return JSONResponse(e, status_code=200) if e else JSONResponse({"error": "not found"}, status_code=404)
 
 
+def _admin_ok(request) -> bool:
+    # fail CLOSED: with NUMGUARD_ADMIN_KEY unset, seeding is disabled entirely (never an open write path).
+    supplied = request.headers.get("x-admin-key", "")
+    return bool(_ADMIN_KEY) and hmac.compare_digest(supplied, _ADMIN_KEY)
+
+
+async def admin_seed(request):
+    """OPERATOR-ONLY: publish curated notary verdicts to the public ledger WITHOUT payment — how the
+    operator seeds a public track record. Auth: X-ADMIN-KEY == NUMGUARD_ADMIN_KEY. Body is one claim
+    {kind, inputs} or a batch {claims:[{kind,inputs},…]} (re-run your whole seed set after a redeploy,
+    since the free-tier ledger is in-memory). Verdicts are recomputed server-side + signed with the
+    canonical key, so a seeded verdict is exactly as verifiable as a paid one."""
+    if not _admin_ok(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    raw = await request.body()
+    if len(raw) > MAX_BODY_BYTES:
+        return JSONResponse({"error": "payload too large"}, status_code=413)
+    try:
+        body = json.loads(raw) if raw else {}
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    items = body.get("claims") if isinstance(body.get("claims"), list) else [body]
+    if len(items) > 200:
+        return JSONResponse({"error": "too many claims (max 200)"}, status_code=400)
+    seeded = []
+    for it in items:
+        err, res = _run("issue_receipt", _issue_and_publish, it if isinstance(it, dict) else {})
+        if err:
+            return err
+        seeded.append({"seq": res["log"]["seq"], "digest": res["receipt"]["digest"],
+                       "kind": (it or {}).get("kind"),
+                       "survives": res["receipt"]["payload"]["claim"]["survives"]})
+    return JSONResponse({"seeded": len(seeded), "entries": seeded, "head": transparency.head()})
+
+
 routes = [Route("/pricing", pricing), Route("/health", health),
           Route("/pubkey", pubkey), Route("/.well-known/numguard.json", well_known),
           Route("/log/head", log_head), Route("/log/verify", log_verify),
-          Route("/receipts", receipts), Route("/receipts/{digest}", receipt_by_digest)]
+          Route("/receipts", receipts), Route("/receipts/{digest}", receipt_by_digest),
+          Route("/admin/seed", admin_seed, methods=["POST"])]
 routes += [Route(f"/{name}", _make(name, price, fn), methods=["POST"]) for name, (price, fn) in ROUTES.items()]
 app = Starlette(routes=routes)

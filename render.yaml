@@ -19,6 +19,10 @@ services:
                                    # to broadcast settlements. Not your receiving wallet.
       - key: NUMGUARD_RPC
         sync: false                # optional: a private Base RPC (Alchemy/Ankr) if the public one rate-limits
+      - key: NUMGUARD_ADMIN_KEY
+        generateValue: true        # operator seed auth: send it as the X-ADMIN-KEY header to POST /admin/seed
+                                   # to publish curated notary verdicts free (no x402). Read its value once
+                                   # from the Render dashboard. Unset => seeding disabled (fail closed).
       - key: NUMGUARD_ISSUER_KEY
         generateValue: true        # Render generates a high-entropy secret ONCE and keeps it across deploys;
                                    # numguard derives a STABLE Ed25519 issuer identity from it (see

@@ -87,3 +87,30 @@ def test_http_agent_proof_flow(isolated):
         assert R.verify_receipt(e["receipt"])
     assert c.get("/log/verify").json()["ok"]
     assert R.verify_receipt(c.get("/log/head").json()["receipt"])
+
+
+def test_admin_seed_is_authed_and_fail_closed(isolated, monkeypatch):
+    pytest.importorskip("httpx")
+    from starlette.testclient import TestClient
+    import importlib
+    from numguard import receipt as R
+
+    # with an admin key set, only the right key can seed
+    monkeypatch.setenv("NUMGUARD_ADMIN_KEY", "operator-secret-xyz")
+    from numguard import rest_api
+    importlib.reload(rest_api)
+    c = TestClient(rest_api.app)
+    claim = {"kind": "backtest", "inputs": {"sr": 0.15, "T": 1000, "n_trials": 1}}
+    assert c.post("/admin/seed", json=claim).status_code == 401                         # no key
+    assert c.post("/admin/seed", headers={"X-ADMIN-KEY": "nope"}, json=claim).status_code == 401  # wrong
+    ok = c.post("/admin/seed", headers={"X-ADMIN-KEY": "operator-secret-xyz"}, json=claim)
+    assert ok.status_code == 200 and ok.json()["seeded"] == 1
+    # the seeded verdict is a normal, publicly-verifiable ledger entry
+    feed = c.get("/receipts").json()
+    assert feed["head"]["count"] == 1 and R.verify_receipt(feed["entries"][0]["receipt"])
+
+    # fail CLOSED: with no admin key configured, seeding is disabled entirely
+    monkeypatch.setenv("NUMGUARD_ADMIN_KEY", "")
+    importlib.reload(rest_api)
+    c2 = TestClient(rest_api.app)
+    assert c2.post("/admin/seed", headers={"X-ADMIN-KEY": ""}, json=claim).status_code == 401
