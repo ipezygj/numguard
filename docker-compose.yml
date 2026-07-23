@@ -1,0 +1,27 @@
+# Self-sovereign numguard: your own x402-rs facilitator + the numguard API. No Coinbase, no third party.
+#   1. copy .env.example -> .env and fill FACILITATOR_PRIVATE_KEY (a DEDICATED gas wallet, see DEPLOY_SELFHOST.md)
+#   2. docker compose up -d
+# numguard talks to the facilitator over the internal network; payments settle to NUMGUARD_PAYTO.
+services:
+  facilitator:
+    image: ghcr.io/x402-rs/x402-facilitator:latest
+    restart: unless-stopped
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      CONFIG: "/app/config.json"
+      FACILITATOR_PRIVATE_KEY: "${FACILITATOR_PRIVATE_KEY}"   # hot wallet that pays SETTLEMENT GAS (small ETH on Base)
+    volumes:
+      - ./facilitator/config.json:/app/config.json:ro
+    # not exposed publicly — only numguard reaches it, on the internal compose network
+
+  numguard:
+    build: .
+    restart: unless-stopped
+    depends_on: [facilitator]
+    ports:
+      - "8080:8080"
+    environment:
+      NUMGUARD_PAYTO: "${NUMGUARD_PAYTO}"                     # your RECEIVING wallet (USDC lands here)
+      NUMGUARD_FACILITATOR_URL: "http://facilitator:8080"     # your own facilitator, internal
+      NUMGUARD_NETWORK: "${NUMGUARD_NETWORK:-base-sepolia}"   # test first; set 'base' for real money

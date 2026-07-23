@@ -4,3 +4,4 @@ __pycache__/
 .numguard/
 build/
 dist/
+.env

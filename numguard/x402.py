@@ -16,8 +16,14 @@ from typing import Callable, Optional
 
 # 1 credit = $0.01; x402 prices quoted in the stablecoin's smallest honest unit (USDC has 6 decimals).
 DEFAULT_NETWORK = "base"
-DEFAULT_ASSET = "USDC"
 USDC_DECIMALS = 6
+
+# Network name -> (CAIP-2 chain id, USDC contract address). The `asset` MUST be the on-chain USDC address
+# for a facilitator (x402-rs et al.) to verify + settle — a bare "USDC" string won't clear.
+NETWORKS = {
+    "base":         ("eip155:8453",  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+    "base-sepolia": ("eip155:84532", "0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+}
 
 
 def _usdc_units(usd: float) -> int:
@@ -25,21 +31,24 @@ def _usdc_units(usd: float) -> int:
 
 
 def payment_required(tool: str, price_usd: float, pay_to: str,
-                     network: str = DEFAULT_NETWORK, asset: str = DEFAULT_ASSET,
-                     resource: str = "", nonce: Optional[str] = None) -> dict:
-    """The x402-shaped 402 body an agent can parse and pay. `accepts` lists payment options."""
+                     network: str = DEFAULT_NETWORK, resource: str = "",
+                     nonce: Optional[str] = None) -> dict:
+    """The x402 402 body an agent can parse and pay. `accepts[0]` is a payment requirement in the
+    eip155 'exact' scheme: CAIP-2 network + the on-chain USDC address + amount in smallest units."""
     nonce = nonce or os.urandom(12).hex()
+    caip2, usdc = NETWORKS.get(network, (network, ""))
     return {
         "x402Version": 1,
         "error": "payment required",
         "resource": resource or f"numguard/{tool}",
         "accepts": [{
             "scheme": "exact",
-            "network": network,
-            "asset": asset,
-            "maxAmountRequired": str(_usdc_units(price_usd)),   # smallest units
-            "amountReadable": f"${price_usd:.4f} {asset}",
+            "network": caip2,
+            "asset": usdc,
+            "maxAmountRequired": str(_usdc_units(price_usd)),   # smallest units (6-dp USDC)
+            "amountReadable": f"${price_usd:.4f} USDC",
             "payTo": pay_to,
+            "maxTimeoutSeconds": 120,
             "nonce": nonce,
             "mimeType": "application/json",
         }],
