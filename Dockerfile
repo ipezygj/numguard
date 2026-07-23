@@ -6,7 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /
 
 COPY pyproject.toml README.md ./
 COPY numguard ./numguard
-RUN pip install --no-cache-dir . uvicorn "cryptography>=41" "web3>=6"
+# Install numguard + the guard engine (agent-tripwire, from git until 0.3 is on PyPI) so the deployed
+# endpoint can serve verify_guard_trace. It's pure metered compute over caller-supplied traces — no
+# server-file access — so it's safe on the public HTTP transport alongside the other verify tools.
+RUN pip install --no-cache-dir . uvicorn "cryptography>=41" "web3>=6" \
+    "agent-tripwire @ git+https://github.com/ipezygj/agent-guard@master"
 
 EXPOSE 8080
 # Bind to the host's $PORT when set (Render/Fly/Heroku assign it), else 8080. Shell form so $PORT expands.
