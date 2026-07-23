@@ -15,11 +15,5 @@
       "transport": { "type": "stdio" },
       "runtimeHint": "python"
     }
-  ],
-  "remotes": [
-    {
-      "type": "streamable-http",
-      "url": "https://REPLACE-WITH-YOUR-DEPLOYMENT/mcp"
-    }
   ]
 }
