@@ -20,6 +20,22 @@ from .backtest import _norm_cdf, _probit, sharpe as _sharpe
 # --------------------------------------------------------------------------- #
 # small stdlib stats helpers
 # --------------------------------------------------------------------------- #
+def _clean(seq, name: str = "returns"):
+    """Coerce an untrusted series to a list of FINITE floats. Rejects non-numeric, NaN, and inf so a public
+    caller can't crash a check or poison a statistic. Returns the cleaned list."""
+    if not isinstance(seq, (list, tuple)):
+        raise ValueError(f"{name} must be a list of numbers")
+    out = []
+    for v in seq:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError(f"{name} must contain only numbers")
+        f = float(v)
+        if math.isnan(f) or math.isinf(f):
+            raise ValueError(f"{name} must be finite (no NaN/inf)")
+        out.append(f)
+    return out
+
+
 def _mean(x: Sequence[float]) -> float:
     return sum(x) / len(x) if x else 0.0
 
@@ -302,6 +318,12 @@ def run_battery(returns: Sequence[float], *, positions: Optional[Sequence[float]
                 periods_per_year: int = 252) -> dict:
     """Run every applicable check and return a combined verdict. A check runs only if its inputs are present.
     `survives` is True only if NO check flags. `flags` names what tripped."""
+    returns = _clean(returns, "returns")
+    positions = _clean(positions, "positions") if positions is not None else None
+    asset_returns = _clean(asset_returns, "asset_returns") if asset_returns is not None else None
+    turnover = _clean(turnover, "turnover") if turnover is not None else None
+    if candidates is not None:
+        candidates = [_clean(row, "candidates row") for row in candidates]
     checks: dict = {}
 
     def _add(name, res):
@@ -321,6 +343,10 @@ def run_battery(returns: Sequence[float], *, positions: Optional[Sequence[float]
     if candidates is not None:
         _add("pbo", pbo(candidates))
 
+    if not checks:   # series too short for any check — do NOT report a vacuous "survives"
+        return {"kind": "backtest_battery", "survives": None, "risk": "unknown", "n_checks": 0,
+                "flags": [], "checks": {},
+                "verdict": "insufficient data — pass a longer returns series (>= ~16 points) to run the battery."}
     flags = [name for name, r in checks.items() if r.get("flag")]
     survives = len(flags) == 0
     # severity: look-ahead and overfitting make the backtest fiction (critical); inflated/fragile Sharpe is

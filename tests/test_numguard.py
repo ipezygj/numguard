@@ -263,3 +263,19 @@ def test_backtest_battery_catches_leakage_and_autocorrelation(tmp_path, monkeypa
     fn = getattr(vbs, "fn", vbs)
     out = fn("bt", [rng.gauss(0.001, 0.01) for _ in range(500)], positions=pos, asset_returns=a)
     assert out["n_checks"] >= 6 and "leakage" in out["checks"] and isinstance(out["flags"], list)
+
+
+def test_backtest_battery_robust_to_bad_input():
+    """A public paid tool must not crash on odd input, and must not vacuously 'pass' a too-short series."""
+    import pytest
+    from numguard import backtest_battery as B
+    import random
+    rng = random.Random(5)
+    good = [rng.gauss(0.001, 0.01) for _ in range(400)]
+    # NaN / inf / non-numeric are rejected cleanly
+    for bad in ([float("nan")] + good, [float("inf")] + good, ["x"] + good, "notalist"):
+        with pytest.raises(ValueError):
+            B.run_battery(bad)
+    # too-short series -> no vacuous survives=True
+    r = B.run_battery([0.01, -0.01, 0.02])
+    assert r["n_checks"] == 0 and r["survives"] is None and r["risk"] == "unknown"
