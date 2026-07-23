@@ -18,6 +18,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt, _limits
+from . import backtest_battery as _battery
 
 
 class _Out(BaseModel):
@@ -92,6 +93,16 @@ class Pricing(_Out):
     free_tier_calls: Optional[Any] = None
     prices: Optional[Any] = None
     x402: Optional[Any] = None
+
+
+class BatteryVerdict(_Out):
+    survives: Annotated[Optional[Any], Field(description="True only if NO integrity check flags.")] = None
+    n_checks: Optional[Any] = None
+    flags: Annotated[Optional[Any], Field(description="Names of the checks that tripped.")] = None
+    checks: Annotated[Optional[Any], Field(description="Per-check results (hac_sharpe, regime_stability, "
+                                                       "drawdown, bootstrap_stability, permutation, leakage, "
+                                                       "pbo, …).")] = None
+    verdict: Optional[Any] = None
 
 
 def _ann(title: str) -> ToolAnnotations:
@@ -298,6 +309,39 @@ def verify_guard_trace(
         return _ag_rcpt.issue_receipt(verdict, priv, pub)
 
     return _billed(api_key, "verify_guard_trace", run)
+
+
+@mcp.tool(annotations=_ann("Full backtest-integrity battery on the returns series"))
+def verify_backtest_series(
+    api_key: ApiKey,
+    returns: Annotated[list, Field(description="The strategy's per-period return series (the actual numbers, "
+                                              "not a summary).")],
+    positions: Annotated[Optional[list], Field(description="Optional aligned position/signal series — enables "
+                                                          "the same-bar look-ahead (leakage) check.")] = None,
+    asset_returns: Annotated[Optional[list], Field(description="Optional aligned underlying-asset returns — "
+                                                              "needed with `positions` for the leakage check.")] = None,
+    turnover: Annotated[Optional[list], Field(description="Optional per-period turnover — enables the "
+                                                         "breakeven-cost check.")] = None,
+    candidates: Annotated[Optional[list], Field(description="Optional matrix (rows = the candidate strategies "
+                                                           "you picked the winner from) — enables PBO.")] = None,
+    periods_per_year: Annotated[int, Field(description="Periods per year for annualization (252 daily).")] = 252,
+) -> BatteryVerdict:
+    """Run the checks a Deflated-Sharpe pass STILL misses — on the actual returns series. Catches same-bar
+    look-ahead, autocorrelation-inflated Sharpe (HAC), regime dependence / cherry-picked windows, drawdown &
+    tail fantasy, one-lucky-epoch fragility (block bootstrap), overfitting beyond n_trials (PBO), and
+    volatility-clustering. Returns a combined verdict + the checks that flagged. Pass `positions`+`asset_returns`
+    for the leakage check, `turnover` for cost, `candidates` (a matrix) for PBO."""
+    _limits.check_list("returns", returns)
+    for nm, v in (("positions", positions), ("asset_returns", asset_returns), ("turnover", turnover)):
+        if v is not None:
+            _limits.check_list(nm, v)
+    if candidates is not None:
+        if not isinstance(candidates, list) or sum(len(r) for r in candidates if hasattr(r, "__len__")) > _limits.MAX_ITEMS:
+            raise ValueError("candidates too large")
+    return _billed(api_key, "verify_backtest_series",
+                   lambda: _battery.run_battery(returns, positions=positions, asset_returns=asset_returns,
+                                                turnover=turnover, candidates=candidates,
+                                                periods_per_year=periods_per_year))
 
 
 @mcp.tool(annotations=_ann("Check your free calls + credit balance"))

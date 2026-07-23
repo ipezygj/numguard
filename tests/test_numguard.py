@@ -238,3 +238,28 @@ def test_verify_guard_trace_recomputes_and_signs(monkeypatch, tmp_path):
     import json
     bad = json.loads(json.dumps(r)); bad["payload"]["verdict"]["decision"] = "allow"
     assert receipt.verify_receipt(bad) is False
+
+
+def test_backtest_battery_catches_leakage_and_autocorrelation(tmp_path, monkeypatch):
+    """The integrity battery must catch what a Deflated-Sharpe pass misses: same-bar look-ahead and
+    autocorrelation-inflated Sharpe."""
+    import random
+    from pathlib import Path
+    from numguard import credits, backtest_battery as B
+    monkeypatch.setattr(credits, "_STORE", Path(tmp_path) / "l.json")
+    rng = random.Random(3)
+    # perfect same-bar look-ahead: position == sign of the SAME bar's return
+    a = [rng.gauss(0, 0.01) for _ in range(300)]
+    pos = [1.0 if x > 0 else -1.0 for x in a]
+    assert B.leakage_scan(pos, a)["flag"] is True
+    # a smoothed (AR(1)) series inflates the naive Sharpe vs HAC
+    ac, prev = [], 0.0
+    for _ in range(600):
+        prev = 0.6 * prev + rng.gauss(0.0006, 0.01)
+        ac.append(prev)
+    assert B.hac_sharpe(ac)["inflation"] > 1.0
+    # the MCP tool runs the battery and returns a structured verdict with per-check results
+    from numguard.mcp_server import verify_backtest_series as vbs
+    fn = getattr(vbs, "fn", vbs)
+    out = fn("bt", [rng.gauss(0.001, 0.01) for _ in range(500)], positions=pos, asset_returns=a)
+    assert out["n_checks"] >= 6 and "leakage" in out["checks"] and isinstance(out["flags"], list)

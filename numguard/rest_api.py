@@ -93,6 +93,11 @@ ROUTES = {
                                             if audit_matrix else {"error": "needs evalgate: pip install git+https://github.com/ipezygj/evalgate"})),
     # notary write-path: issue a signed receipt AND publish it to the public, hash-chained ledger
     "issue_receipt":     (0.05, _issue_and_publish),
+    # full backtest-integrity battery on the actual returns series (leakage/HAC/PBO/drawdown/…)
+    "verify_backtest_series": (0.05, lambda b: _battery.run_battery(
+        b["returns"], positions=b.get("positions"), asset_returns=b.get("asset_returns"),
+        turnover=b.get("turnover"), candidates=b.get("candidates"),
+        periods_per_year=int(b.get("periods_per_year", 252)))),
 }
 
 
