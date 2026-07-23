@@ -17,9 +17,11 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from . import claims, judge as _judge, x402, _limits
+
 # ---- hardening limits (a public, real-money endpoint) ----
-MAX_ITEMS = 5000          # cap list/matrix sizes so a huge payload can't pin the CPU
-MAX_NBOOT = 5000          # cap leaderboard bootstrap iterations
+MAX_ITEMS = _limits.MAX_ITEMS   # cap list/matrix sizes so a huge payload can't pin the CPU
+MAX_NBOOT = _limits.MAX_NBOOT   # cap leaderboard bootstrap iterations (shared with the MCP rail)
 MAX_BODY_BYTES = 256 * 1024
 RATE_LIMIT, RATE_WINDOW = 60, 60.0     # 60 requests / 60s per client IP
 _hits: dict = defaultdict(deque)
@@ -44,18 +46,11 @@ def _guard_body(tool: str, body: dict) -> None:
     if not isinstance(body, dict):
         raise ValueError("body must be a JSON object")
     if tool == "calibrate_judge":
-        for k in ("judge_caught", "truth_caught"):
-            v = body.get(k)
-            if not isinstance(v, list) or len(v) > MAX_ITEMS:
-                raise ValueError(f"{k} must be a list of <= {MAX_ITEMS} items")
+        _limits.check_list("judge_caught", body.get("judge_caught"))
+        _limits.check_list("truth_caught", body.get("truth_caught"))
     if tool == "audit_leaderboard":
-        results = body.get("results", {})
-        if not isinstance(results, dict) or sum(len(v) for v in results.values() if hasattr(v, "__len__")) > MAX_ITEMS:
-            raise ValueError(f"results too large (> {MAX_ITEMS} total items)")
-        if int(body.get("n_boot", 1000)) > MAX_NBOOT:
-            raise ValueError(f"n_boot must be <= {MAX_NBOOT}")
+        _limits.check_leaderboard(body.get("results", {}), body.get("n_boot", 1000))
 
-from . import claims, judge as _judge, x402
 try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
 except Exception:

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt
+from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt, _limits
 
 try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
@@ -81,6 +81,11 @@ def calibrate_judge(api_key: str, judge_caught: list, truth_caught: list) -> dic
     """Check an LLM judge against ground truth on a labelled slice. Pass aligned booleans: the judge's
     verdicts and the known-correct answers. Returns agreement and whether the judge's errors lean one
     direction (over-crediting = the length/self-preference failure mode)."""
+    try:
+        _limits.check_list("judge_caught", judge_caught)
+        _limits.check_list("truth_caught", truth_caught)
+    except ValueError as e:
+        return {"error": f"bad request: {e}"}          # reject oversized input before billing
     return _billed(api_key, "calibrate_judge", lambda: _judge.calibrate_judge(judge_caught, truth_caught))
 
 
@@ -88,6 +93,10 @@ def calibrate_judge(api_key: str, judge_caught: list, truth_caught: list) -> dic
 def audit_leaderboard(api_key: str, results: dict, n_boot: int = 1000) -> dict:
     """Audit a whole leaderboard from per-item results. `results` maps each model to the list of item-ids it
     solved (or a {item: score} dict). Returns rank confidence intervals + whether #1 is statistically real."""
+    try:
+        _limits.check_leaderboard(results, n_boot)
+    except ValueError as e:
+        return {"error": f"bad request: {e}"}          # reject oversized input before billing
     def run():
         if audit_matrix is None:
             return {"error": "leaderboard audit needs the evalgate library: pip install "

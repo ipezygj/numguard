@@ -121,3 +121,16 @@ def test_rate_limit_returns_429(monkeypatch):
     hit_429 = any(c.post("/verify_model_gap", json={"n": 100, "p1": 0.8, "p2": 0.7}).status_code == 429
                   for _ in range(rest_api.RATE_LIMIT + 5))
     assert hit_429
+
+
+def test_mcp_rail_guards_oversized_input_without_billing():
+    """The MCP tool reaches the same compute as REST — an oversized payload must be rejected on that rail
+    too, before any credit is charged."""
+    from numguard import mcp_server as m, credits
+    cj = getattr(m.calibrate_judge, "fn", m.calibrate_judge)
+    al = getattr(m.audit_leaderboard, "fn", m.audit_leaderboard)
+    r1 = cj("mcp-guard-key", [True] * 6000, [False] * 6000)
+    r2 = al("mcp-guard-key", {"a": list(range(6000))})
+    assert "error" in r1 and "error" in r2
+    # rejected before billing: the fresh key keeps its full free tier
+    assert credits.balance("mcp-guard-key")["free_remaining"] == credits.FREE_TIER_CALLS
