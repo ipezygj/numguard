@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "numguard"
+version = "0.1.0"
+description = "The verification layer for the agent economy: an agent-callable primitive that checks a number before it's asserted (evals, leaderboards, backtests), returns a signed reproducibility receipt, and meters itself (prepaid credits + x402 pay-per-call)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ilpo Väätäinen" }]
+keywords = ["agents", "mcp", "eval", "verification", "deflated-sharpe", "backtest", "x402", "llm-judge"]
+
+dependencies = [
+    "evalgate @ git+https://github.com/ipezygj/evalgate",
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+receipts = ["cryptography>=41"]   # Ed25519 signed receipts (falls back to HMAC without it)
+dev = ["pytest>=7"]
+
+[project.scripts]
+numguard-mcp = "numguard.mcp_server:mcp.run"
+
+[tool.setuptools.packages.find]
+include = ["numguard*"]
