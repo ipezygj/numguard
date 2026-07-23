@@ -8,15 +8,8 @@ Shared statistics come from `evalgate` (the zero-dep eval-integrity library); ba
 own Deflated Sharpe. One call, one verdict.
 """
 from __future__ import annotations
-import sys
-from pathlib import Path
 
-try:
-    from evalgate import correct_best_of, power_check, bias_rate
-except ImportError:                       # local dev: sibling checkout
-    sys.path.insert(0, str(Path.home() / "evalgate"))
-    from evalgate import correct_best_of, power_check, bias_rate
-
+from ._evalstats import correct_best_of, power_check, bias_rate
 from .backtest import deflated_sharpe
 
 KINDS = ("subset_win", "model_gap", "judge_bias", "backtest")

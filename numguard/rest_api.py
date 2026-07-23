@@ -17,13 +17,10 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from . import claims, judge as _judge, x402
-try:
+try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
-except ImportError:
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path.home() / "evalgate"))
-    from evalgate import audit_matrix
+except Exception:
+    audit_matrix = None
 
 PAYTO = os.environ.get("NUMGUARD_PAYTO", "")
 NETWORK = os.environ.get("NUMGUARD_NETWORK", "base")
@@ -36,7 +33,8 @@ ROUTES = {
     "verify_model_gap":  (0.02, lambda b: claims.verify_claim("model_gap", **b)),
     "verify_judge_bias": (0.02, lambda b: claims.verify_claim("judge_bias", **b)),
     "calibrate_judge":   (0.05, lambda b: _judge.calibrate_judge(b["judge_caught"], b["truth_caught"])),
-    "audit_leaderboard": (0.05, lambda b: {"verdict": str(audit_matrix(b["results"], n_boot=b.get("n_boot", 1000), seed=0))}),
+    "audit_leaderboard": (0.05, lambda b: ({"verdict": str(audit_matrix(b["results"], n_boot=b.get("n_boot", 1000), seed=0))}
+                                            if audit_matrix else {"error": "needs evalgate: pip install git+https://github.com/ipezygj/evalgate"})),
 }
 
 

@@ -13,12 +13,12 @@ authors = [{ name = "Ilpo Väätäinen" }]
 keywords = ["agents", "mcp", "eval", "verification", "deflated-sharpe", "backtest", "x402", "llm-judge"]
 
 dependencies = [
-    "evalgate @ git+https://github.com/ipezygj/evalgate",
-    "mcp>=1.0",
+    "mcp>=1.0",              # MCP server + its HTTP/ASGI stack (starlette, uvicorn, httpx, pydantic)
 ]
 
 [project.optional-dependencies]
-receipts = ["cryptography>=41"]   # Ed25519 signed receipts (falls back to HMAC without it)
+receipts = ["cryptography>=41"]     # Ed25519 signed receipts (falls back to HMAC without it)
+leaderboard = ["evalgate @ git+https://github.com/ipezygj/evalgate"]  # optional: audit_leaderboard tool
 dev = ["pytest>=7"]
 
 [project.scripts]

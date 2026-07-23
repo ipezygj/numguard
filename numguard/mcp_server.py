@@ -14,12 +14,10 @@ from mcp.server.fastmcp import FastMCP
 
 from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt
 
-try:
+try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
-except ImportError:
-    import sys
-    sys.path.insert(0, str(Path.home() / "evalgate"))
-    from evalgate import audit_matrix
+except Exception:
+    audit_matrix = None
 
 mcp = FastMCP("numguard")
 
@@ -91,6 +89,9 @@ def audit_leaderboard(api_key: str, results: dict, n_boot: int = 1000) -> dict:
     """Audit a whole leaderboard from per-item results. `results` maps each model to the list of item-ids it
     solved (or a {item: score} dict). Returns rank confidence intervals + whether #1 is statistically real."""
     def run():
+        if audit_matrix is None:
+            return {"error": "leaderboard audit needs the evalgate library: pip install "
+                             "git+https://github.com/ipezygj/evalgate"}
         a = audit_matrix(results, n_boot=n_boot, seed=0)
         try:
             from dataclasses import asdict

@@ -8,14 +8,8 @@ systematically over-crediting, the failure mode behind length/self-preference bi
 Directional-bias significance uses evalgate.bias_rate. Same method as the pr-review-evals case study.
 """
 from __future__ import annotations
-import sys
-from pathlib import Path
 
-try:
-    from evalgate import bias_rate
-except ImportError:
-    sys.path.insert(0, str(Path.home() / "evalgate"))
-    from evalgate import bias_rate
+from ._evalstats import bias_rate
 
 
 def calibrate_judge(judge_caught, truth_caught) -> dict:
