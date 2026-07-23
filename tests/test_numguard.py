@@ -134,3 +134,22 @@ def test_mcp_rail_guards_oversized_input_without_billing():
     assert "error" in r1 and "error" in r2
     # rejected before billing: the fresh key keeps its full free tier
     assert credits.balance("mcp-guard-key")["free_remaining"] == credits.FREE_TIER_CALLS
+
+
+def test_mcp_payment_required_points_to_x402_endpoint(tmp_path, monkeypatch):
+    """When an MCP agent exhausts the free tier, the payment_required must hand it a CONCRETE x402 endpoint to
+    convert at — not just a code reference (the MCP rail has no purchase mechanism of its own)."""
+    from pathlib import Path
+    from numguard import credits
+    monkeypatch.setattr(credits, "_STORE", Path(tmp_path) / "ledger.json")
+    k = "convert-key"
+    for _ in range(credits.FREE_TIER_CALLS):
+        credits.charge(k, "verify_backtest")
+    r = credits.charge(k, "verify_backtest")
+    assert r["payment_required"] and not r["ok"]
+    assert r["pay"]["type"] == "x402"
+    assert r["pay"]["endpoint"].endswith("/verify_backtest")
+    # a generic/non-REST tool name falls back to the pricing page, never a dead reference
+    for _ in range(credits.FREE_TIER_CALLS):
+        credits.charge("convert-key2", "issue_receipt")
+    assert credits.charge("convert-key2", "issue_receipt")["pay"]["endpoint"].endswith("/pricing")

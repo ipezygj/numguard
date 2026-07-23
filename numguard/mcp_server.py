@@ -129,9 +129,11 @@ def balance(api_key: str) -> dict:
 @mcp.tool()
 def pricing() -> dict:
     """Machine-readable price list (credits; 1 credit = $0.01) and the free-tier size, so an agent can decide
-    before it calls. Pay-per-call over x402 is also available for wallet-native agents."""
+    before it calls. Also returns the wallet-native x402 rail an agent can pay at once its free tier is used."""
     return {"unit": "credit ($0.01)", "free_tier_calls": credits.FREE_TIER_CALLS,
-            "prices": credits.PRICES, "x402": "stablecoin pay-per-call (see numguard.x402)"}
+            "prices": credits.PRICES,
+            "x402": {"how": "wallet-native pay-per-call (USDC on Base), no signup",
+                     "pricing": f"{credits.PUBLIC_URL}/pricing", "base_url": credits.PUBLIC_URL}}
 
 
 # ASGI app for remote MCP hosts / deployment:  uvicorn numguard.mcp_server:app

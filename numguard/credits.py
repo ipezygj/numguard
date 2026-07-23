@@ -24,6 +24,21 @@ FREE_TIER_CALLS = 25          # per key, before any charge — let the agent fee
 
 _STORE = Path(os.environ.get("NUMGUARD_LEDGER", Path.home() / ".numguard" / "ledger.json"))
 
+# The wallet-native paid rail lives on the REST service. When an MCP agent exhausts its free tier there is no
+# purchase mechanism over the MCP transport itself, so we hand it a CONCRETE x402 endpoint it can pay at.
+PUBLIC_URL = os.environ.get("NUMGUARD_PUBLIC_URL", "https://numguard-4x7u.onrender.com").rstrip("/")
+_REST_ROUTES = {"verify_backtest", "verify_subset_win", "verify_model_gap", "verify_judge_bias",
+                "calibrate_judge", "audit_leaderboard"}
+
+
+def x402_rail(tool: str) -> dict:
+    """A concrete, actionable pointer to the x402 pay-per-call rail for `tool` (falls back to /pricing when the
+    billed tool name isn't a 1:1 REST route, e.g. the generic verify_claim / issue_receipt)."""
+    endpoint = f"{PUBLIC_URL}/{tool}" if tool in _REST_ROUTES else f"{PUBLIC_URL}/pricing"
+    return {"type": "x402", "endpoint": endpoint, "pricing": f"{PUBLIC_URL}/pricing",
+            "how": "POST your inputs to the endpoint; on HTTP 402 pay the quoted USDC (Base) and retry with an "
+                   "X-PAYMENT header. Wallet-native, no signup."}
+
 
 def _load() -> dict:
     try:
@@ -71,10 +86,11 @@ def charge(api_key: str, tool: str) -> dict:
         a["history"].append({"t": int(time.time()), "type": "charge", "tool": tool, "credits": cost})
         _save(d)
         return {"ok": True, "charged": cost, "balance": a["balance"]}
+    rail = x402_rail(tool)
     return {"ok": False, "payment_required": True, "tool": tool, "price": cost,
-            "balance": a["balance"], "unit": "credit ($0.01)",
-            "message": f"Insufficient credits for {tool} (needs {cost}, have {a['balance']}). "
-                       f"Top up, or pay per-call via x402 (see numguard.x402)."}
+            "balance": a["balance"], "unit": "credit ($0.01)", "pay": rail,
+            "message": f"Free tier used up for {tool} (costs {cost} credits, balance {a['balance']}). "
+                       f"Pay per-call over x402 at {rail['endpoint']} — no signup — or top up this key."}
 
 
 def gate(api_key: str, tool: str, fn, *args, **kwargs) -> dict:
