@@ -42,7 +42,7 @@ def payment_required(tool: str, price_usd: float, pay_to: str,
         "error": "payment required",
         "resource": resource or f"numguard/{tool}",
         "accepts": [{
-            "scheme": "exact",
+            "scheme": "v2-eip155-exact",   # match the x402-rs facilitator's configured scheme
             "network": caip2,
             "asset": usdc,
             "maxAmountRequired": str(_usdc_units(price_usd)),   # smallest units (6-dp USDC)
