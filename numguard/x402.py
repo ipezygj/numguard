@@ -18,11 +18,17 @@ from typing import Callable, Optional
 DEFAULT_NETWORK = "base"
 USDC_DECIMALS = 6
 
-# Network name -> (CAIP-2 chain id, USDC contract address). The `asset` MUST be the on-chain USDC address
-# for a facilitator (x402-rs et al.) to verify + settle — a bare "USDC" string won't clear.
+# Per network: the on-chain USDC address (the `asset` a facilitator settles — a bare "USDC" string won't
+# clear) + the token's EIP-712 domain (`name`/`version`), which the paying client needs to sign the USDC
+# `transferWithAuthorization` (EIP-3009). The client reads these from the 402 `extra` block.
+# We speak x402 **v1** on the wire: scheme "exact", human network name ("base"), top-level scheme/network in
+# the payment payload. v1 is what off-the-shelf clients (x402 PyPI, x402-fetch/axios) emit by default, so
+# real agents can pay. The facilitator (x402-rs) is configured for BOTH v1-eip155-exact and v2-eip155-exact.
 NETWORKS = {
-    "base":         ("eip155:8453",  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
-    "base-sepolia": ("eip155:84532", "0x036CbD53842c5426634e7929541eC2318f3dCF7e"),
+    "base":         {"caip2": "eip155:8453",  "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                     "name": "USD Coin", "version": "2"},
+    "base-sepolia": {"caip2": "eip155:84532", "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+                     "name": "USDC", "version": "2"},
 }
 
 
@@ -33,17 +39,19 @@ def _usdc_units(usd: float) -> int:
 def payment_required(tool: str, price_usd: float, pay_to: str,
                      network: str = DEFAULT_NETWORK, resource: str = "",
                      nonce: Optional[str] = None) -> dict:
-    """The x402 402 body an agent can parse and pay. `accepts[0]` is a payment requirement in the
-    eip155 'exact' scheme: CAIP-2 network + the on-chain USDC address + amount in smallest units."""
+    """The x402 (v1) 402 body an agent can parse and pay. `accepts[0]` is a payment requirement in the eip155
+    'exact' scheme: the network name + on-chain USDC address + amount in smallest units + the token's EIP-712
+    domain in `extra` so the client can sign the transfer authorization."""
     nonce = nonce or os.urandom(12).hex()
-    caip2, usdc = NETWORKS.get(network, (network, ""))
+    info = NETWORKS.get(network, {})
+    usdc = info.get("usdc", "")
     return {
         "x402Version": 1,
         "error": "payment required",
         "resource": resource or f"numguard/{tool}",
         "accepts": [{
-            "scheme": "v2-eip155-exact",   # match the x402-rs facilitator's configured scheme
-            "network": caip2,
+            "scheme": "exact",            # x402 wire scheme name (the facilitator's config id is separate)
+            "network": network,           # v1 uses the human network name, e.g. "base"
             "asset": usdc,
             "maxAmountRequired": str(_usdc_units(price_usd)),   # smallest units (6-dp USDC)
             "amountReadable": f"${price_usd:.4f} USDC",
@@ -51,6 +59,7 @@ def payment_required(tool: str, price_usd: float, pay_to: str,
             "maxTimeoutSeconds": 120,
             "nonce": nonce,
             "mimeType": "application/json",
+            "extra": {"name": info.get("name", ""), "version": info.get("version", "")},  # EIP-712 domain
         }],
     }
 
