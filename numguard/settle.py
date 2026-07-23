@@ -147,6 +147,13 @@ def self_verifier():
                 _SEEN_NONCES[nonce_key] = time.time()
                 for k in [k for k, t in list(_SEEN_NONCES.items()) if (time.time() - t) > _SEEN_TTL]:
                     _SEEN_NONCES.pop(k, None)
+                # simulate right before broadcasting: if the authorization would revert (someone front-ran it,
+                # the payer drained their balance since the check, or it expired in the meantime), skip the
+                # send so no gas is burned on a doomed tx (bounds the gas-griefing surface).
+                try:
+                    fn.call({"from": gas_acct.address})
+                except Exception:
+                    return Settlement(False, reason="authorization not settleable")
                 tx = fn.build_transaction({"from": gas_acct.address,
                                            "nonce": w3.eth.get_transaction_count(gas_acct.address, "pending"),
                                            "chainId": chain_id})
