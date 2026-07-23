@@ -13,6 +13,6 @@
     }
   },
   "schemes": [
-    { "scheme": "v2-eip155-exact", "chains": ["eip155:8453", "eip155:84532"] }
+    { "scheme": "v2-eip155-exact", "chains": "eip155:*" }
   ]
 }
