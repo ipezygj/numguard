@@ -259,8 +259,9 @@ def audit_leaderboard(
 @mcp.tool(annotations=_ann("Verify a claim and issue a signed receipt"))
 def issue_receipt(
     api_key: ApiKey,
-    kind: Annotated[str, Field(description="Claim type to verify + attest: 'backtest', 'subset_win', "
-                                           "'model_gap', or 'judge_bias'.")],
+    kind: Annotated[str, Field(description="Claim type to verify + attest: 'backtest', 'backtest_series' "
+                                           "(full integrity battery), 'subset_win', 'model_gap', or "
+                                           "'judge_bias'.")],
     inputs: Annotated[dict, Field(description="Inputs for that claim — the same params as the matching "
                                              "verify_* tool, e.g. {'sr':0.12,'T':250,'n_trials':100} for backtest.")],
 ) -> Receipt:

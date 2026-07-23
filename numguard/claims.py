@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from ._evalstats import correct_best_of, power_check, bias_rate
 from .backtest import deflated_sharpe
+from . import backtest_battery as _battery, _limits
 
-KINDS = ("subset_win", "model_gap", "judge_bias", "backtest")
+KINDS = ("subset_win", "model_gap", "judge_bias", "backtest", "backtest_series")
 
 
 def verify_claim(kind: str, **p) -> dict:
@@ -50,6 +51,15 @@ def verify_claim(kind: str, **p) -> dict:
         return {"kind": kind, "survives": bool(v.survives), "sr": v.sr, "dsr": v.dsr,
                 "deflation_bar": v.sr_benchmark, "psr_vs_0": v.psr, "min_track_record": v.min_track_record_length,
                 "verdict": str(v)}
+    if kind == "backtest_series":
+        # the full integrity battery on the actual series — receipt-able like any other claim
+        _limits.check_list("returns", p.get("returns"))
+        for nm in ("positions", "asset_returns", "turnover"):
+            if p.get(nm) is not None:
+                _limits.check_list(nm, p.get(nm))
+        return _battery.run_battery(p["returns"], positions=p.get("positions"),
+                                    asset_returns=p.get("asset_returns"), turnover=p.get("turnover"),
+                                    candidates=p.get("candidates"), periods_per_year=p.get("periods_per_year", 252))
     raise ValueError(f"unknown claim kind '{kind}'; use one of {KINDS}")
 
 

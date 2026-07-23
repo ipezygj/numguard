@@ -279,3 +279,21 @@ def test_backtest_battery_robust_to_bad_input():
     # too-short series -> no vacuous survives=True
     r = B.run_battery([0.01, -0.01, 0.02])
     assert r["n_checks"] == 0 and r["survives"] is None and r["risk"] == "unknown"
+
+
+def test_backtest_series_is_receiptable(tmp_path, monkeypatch):
+    """A battery verdict must be receipt-able: numguard recomputes it from the series and signs it."""
+    import random
+    from pathlib import Path
+    from numguard import credits, receipt, claims
+    monkeypatch.setattr(credits, "_STORE", Path(tmp_path) / "l.json")
+    rng = random.Random(9)
+    a = [rng.gauss(0, 0.01) for _ in range(300)]
+    pos = [1.0 if x > 0 else -1.0 for x in a]
+    la = [pos[t] * a[t] for t in range(300)]                       # look-ahead
+    v = claims.verify_claim("backtest_series", returns=la, positions=pos, asset_returns=a)
+    assert v["risk"] == "critical" and "leakage" in v["flags"]
+    from numguard.mcp_server import issue_receipt
+    fn = getattr(issue_receipt, "fn", issue_receipt)
+    r = fn("rk", "backtest_series", {"returns": la, "positions": pos, "asset_returns": a})
+    assert r["payload"]["claim"]["survives"] is False and receipt.verify_receipt(r) is True
