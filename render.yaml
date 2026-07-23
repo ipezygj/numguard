@@ -6,10 +6,17 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
-      # Set these in the Render dashboard to start charging. Leave unset for free dev mode.
-      - key: NUMGUARD_PAYTO            # your receiving wallet (USDC on the network below)
-        sync: false
-      - key: NUMGUARD_FACILITATOR_URL  # an x402 facilitator that settles to your wallet
-        sync: false
+      # Receiving wallet (public EVM address). Same address works on testnet and mainnet.
+      - key: NUMGUARD_PAYTO
+        value: "0x75c5487C44E0EA83E5F2f692BF301500a40B836f"
+
+      # START ON TESTNET (free test-USDC), then flip to mainnet for real money:
+      #   TESTNET  facilitator (no auth):  https://x402.org/facilitator   (network: base-sepolia)
+      #   MAINNET  facilitator (Coinbase): https://api.cdp.coinbase.com/platform/v2/x402
+      #            (network: base; also set NUMGUARD_FACILITATOR_AUTH = "Bearer <CDP-JWT>")
+      - key: NUMGUARD_FACILITATOR_URL
+        sync: false        # set in the dashboard (testnet URL first)
       - key: NUMGUARD_NETWORK
-        value: base
+        value: base-sepolia   # test with test-USDC first; change to 'base' for real payments
+      - key: NUMGUARD_FACILITATOR_AUTH
+        sync: false        # only needed for the Coinbase mainnet facilitator (CDP JWT)

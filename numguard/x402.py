@@ -85,7 +85,13 @@ def facilitator_verifier(facilitator_url: str = None):
                 payload = json.loads(x_payment)
             req = challenge["accepts"][0]
             body = {"x402Version": 1, "paymentPayload": payload, "paymentRequirements": req}
-            with httpx.Client(timeout=20) as c:
+            # mainnet facilitators (e.g. Coinbase CDP) need auth; set NUMGUARD_FACILITATOR_AUTH
+            # to the full header value (e.g. "Bearer <cdp-jwt>"). Testnet facilitators need none.
+            headers = {}
+            auth = os.environ.get("NUMGUARD_FACILITATOR_AUTH", "")
+            if auth:
+                headers["Authorization"] = auth
+            with httpx.Client(timeout=20, headers=headers) as c:
                 v = c.post(facilitator_url.rstrip("/") + "/verify", json=body)
                 if v.status_code != 200 or not v.json().get("isValid", False):
                     return Settlement(False, reason=f"facilitator /verify rejected: {v.text[:120]}")
