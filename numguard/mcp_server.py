@@ -10,10 +10,26 @@ from __future__ import annotations
 import json, os
 from pathlib import Path
 
+from typing import Annotated
+
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt, _limits
+
+
+def _ann(title: str) -> ToolAnnotations:
+    """These tools compute a verdict; they don't mutate the caller's world (metering aside) and are
+    deterministic, so they're read-only, non-destructive, idempotent, and closed-world."""
+    return ToolAnnotations(title=title, readOnlyHint=True, destructiveHint=False,
+                           idempotentHint=True, openWorldHint=False)
+
+
+# shared parameter description: the metering key every billable tool takes
+ApiKey = Annotated[str, Field(description="Your metering key — any stable string identifying you; it tracks "
+                                          "your free-tier calls and prepaid credit balance.")]
 
 try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
@@ -52,9 +68,16 @@ def _billed(api_key: str, tool: str, fn):
 # --------------------------------------------------------------------------- #
 # verification tools
 # --------------------------------------------------------------------------- #
-@mcp.tool()
-def verify_backtest(api_key: str, sr: float, T: int, n_trials: int = 1,
-                    skew: float = 0.0, kurt: float = 3.0) -> dict:
+@mcp.tool(annotations=_ann("Verify a backtest (Deflated Sharpe Ratio)"))
+def verify_backtest(
+    api_key: ApiKey,
+    sr: Annotated[float, Field(description="Observed per-period Sharpe ratio of the strategy.")],
+    T: Annotated[int, Field(description="Sample length — number of return periods in the backtest.")],
+    n_trials: Annotated[int, Field(description="How many strategy/parameter variants were tried before "
+                                               "reporting this one (the multiple-testing count).")] = 1,
+    skew: Annotated[float, Field(description="Skewness of the return series (0 if unknown).")] = 0.0,
+    kurt: Annotated[float, Field(description="Kurtosis of the return series (3 = normal).")] = 3.0,
+) -> dict:
     """Is a strategy's Sharpe real, or the luckiest of many tried? Deflated Sharpe Ratio: pass the observed
     per-period Sharpe `sr`, sample length `T`, and `n_trials` = how many strategy/parameter variants were
     tested before reporting this one. Optionally the return `skew`/`kurt`. For agent traders verifying
@@ -63,29 +86,50 @@ def verify_backtest(api_key: str, sr: float, T: int, n_trials: int = 1,
                    lambda: claims.verify_claim("backtest", sr=sr, T=T, n_trials=n_trials, skew=skew, kurt=kurt))
 
 
-@mcp.tool()
-def verify_subset_win(api_key: str, p: float, n_tests: int) -> dict:
+@mcp.tool(annotations=_ann("Verify a subset/metric win (multiple comparisons)"))
+def verify_subset_win(
+    api_key: ApiKey,
+    p: Annotated[float, Field(description="Raw (uncorrected) p-value of the observed win.")],
+    n_tests: Annotated[int, Field(description="Number of subsets/metrics/checkpoints it could have been "
+                                              "picked from (the look-elsewhere count).")],
+) -> dict:
     """A 'we lead on subset/metric/checkpoint X' claim, corrected for how many you could have picked it from
     (look-elsewhere / multiple comparisons). Pass the raw p-value and the number of comparisons tested."""
     return _billed(api_key, "verify_claim", lambda: claims.verify_claim("subset_win", p=p, n_tests=n_tests))
 
 
-@mcp.tool()
-def verify_model_gap(api_key: str, n: int, p1: float, p2: float) -> dict:
+@mcp.tool(annotations=_ann("Verify a model accuracy gap"))
+def verify_model_gap(
+    api_key: ApiKey,
+    n: Annotated[int, Field(description="Number of test items per model.")],
+    p1: Annotated[float, Field(description="Accuracy of the first model (0-1).")],
+    p2: Annotated[float, Field(description="Accuracy of the second model (0-1).")],
+) -> dict:
     """Is the accuracy gap between two models real, or below what the test set can resolve? Pass items-per-
     model `n` and the two accuracies. Returns the gap, its significance, and the minimum detectable effect."""
     return _billed(api_key, "verify_claim", lambda: claims.verify_claim("model_gap", n=n, p1=p1, p2=p2))
 
 
-@mcp.tool()
-def verify_judge_bias(api_key: str, wins: int, n: int, p0: float = 0.5) -> dict:
+@mcp.tool(annotations=_ann("Verify an LLM-judge / metric preference"))
+def verify_judge_bias(
+    api_key: ApiKey,
+    wins: Annotated[int, Field(description="Number of verdicts the tested side won.")],
+    n: Annotated[int, Field(description="Total number of verdicts.")],
+    p0: Annotated[float, Field(description="Null win-rate to test against (0.5 = no preference).")] = 0.5,
+) -> dict:
     """Is an LLM-judge / metric preference real, or just longer/first/same-family? Pass the count of verdicts
     the tested side won and the total. Exact binomial vs chance."""
     return _billed(api_key, "verify_claim", lambda: claims.verify_claim("judge_bias", wins=wins, n=n, p0=p0))
 
 
-@mcp.tool()
-def calibrate_judge(api_key: str, judge_caught: list, truth_caught: list) -> dict:
+@mcp.tool(annotations=_ann("Calibrate an LLM judge against ground truth"))
+def calibrate_judge(
+    api_key: ApiKey,
+    judge_caught: Annotated[list, Field(description="The judge's per-item verdicts, as aligned booleans "
+                                                    "(True = judge marked it correct/caught).")],
+    truth_caught: Annotated[list, Field(description="The known-correct answers, aligned 1:1 with "
+                                                    "judge_caught (True = actually correct/caught).")],
+) -> dict:
     """Check an LLM judge against ground truth on a labelled slice. Pass aligned booleans: the judge's
     verdicts and the known-correct answers. Returns agreement and whether the judge's errors lean one
     direction (over-crediting = the length/self-preference failure mode)."""
@@ -97,8 +141,13 @@ def calibrate_judge(api_key: str, judge_caught: list, truth_caught: list) -> dic
     return _billed(api_key, "calibrate_judge", lambda: _judge.calibrate_judge(judge_caught, truth_caught))
 
 
-@mcp.tool()
-def audit_leaderboard(api_key: str, results: dict, n_boot: int = 1000) -> dict:
+@mcp.tool(annotations=_ann("Audit a leaderboard (rank confidence)"))
+def audit_leaderboard(
+    api_key: ApiKey,
+    results: Annotated[dict, Field(description="Per-model results: each model name maps to the list of "
+                                              "item-ids it solved, or a {item: score} dict.")],
+    n_boot: Annotated[int, Field(description="Bootstrap iterations for the rank confidence intervals.")] = 1000,
+) -> dict:
     """Audit a whole leaderboard from per-item results. `results` maps each model to the list of item-ids it
     solved (or a {item: score} dict). Returns rank confidence intervals + whether #1 is statistically real."""
     try:
@@ -120,21 +169,25 @@ def audit_leaderboard(api_key: str, results: dict, n_boot: int = 1000) -> dict:
     return _billed(api_key, "audit_leaderboard", run)
 
 
-@mcp.tool()
-def issue_receipt(api_key: str, claim_result: dict) -> dict:
+@mcp.tool(annotations=_ann("Issue a signed reproducibility receipt"))
+def issue_receipt(
+    api_key: ApiKey,
+    claim_result: Annotated[dict, Field(description="A verification result (the dict returned by any verify_* "
+                                                    "tool) to wrap into a signed receipt.")],
+) -> dict:
     """Turn a verification result into a portable, signed receipt (Ed25519). Attach it to your output; anyone
     can verify — with only the public key — that the claim and verdict were checked and unaltered."""
     priv, pub = _issuer()
     return _billed(api_key, "issue_receipt", lambda: _rcpt.issue_receipt(claim_result, priv, pub))
 
 
-@mcp.tool()
-def balance(api_key: str) -> dict:
+@mcp.tool(annotations=_ann("Check your free calls + credit balance"))
+def balance(api_key: ApiKey) -> dict:
     """Your remaining free calls and prepaid credit balance."""
     return credits.balance(api_key)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_ann("List prices + free tier"))
 def pricing() -> dict:
     """Machine-readable price list (credits; 1 credit = $0.01) and the free-tier size, so an agent can decide
     before it calls. Also returns the wallet-native x402 rail an agent can pay at once its free tier is used."""
