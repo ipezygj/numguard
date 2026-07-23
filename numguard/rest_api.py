@@ -35,8 +35,8 @@ def _rate_ok(ip: str) -> bool:
     if len(q) >= RATE_LIMIT:
         return False
     q.append(now)
-    if len(_hits) > 10000:               # bound the table
-        for k in [k for k, v in list(_hits.items()) if not v][:5000]:
+    if len(_hits) > 5000:                # bound the table: drop buckets with no hit inside the window
+        for k in [k for k, v in list(_hits.items()) if not v or now - v[-1] > RATE_WINDOW]:
             _hits.pop(k, None)
     return True
 
@@ -76,8 +76,13 @@ ROUTES = {
 
 
 def _client_ip(request) -> str:
+    # The platform proxy (Render) APPENDS the real client IP as the LAST X-Forwarded-For entry; any earlier
+    # entries are client-supplied and spoofable. Trust the rightmost one so a forged XFF can't mint a fresh
+    # rate-limit bucket per request (which would defeat the limiter and grow the table unbounded).
     xff = request.headers.get("x-forwarded-for", "")
-    return (xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown"))
+    if xff:
+        return xff.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def _run(tool: str, fn, body: dict):

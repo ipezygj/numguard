@@ -243,16 +243,24 @@ def audit_leaderboard(
     return _billed(api_key, "audit_leaderboard", run)
 
 
-@mcp.tool(annotations=_ann("Issue a signed reproducibility receipt"))
+@mcp.tool(annotations=_ann("Verify a claim and issue a signed receipt"))
 def issue_receipt(
     api_key: ApiKey,
-    claim_result: Annotated[dict, Field(description="A verification result (the dict returned by any verify_* "
-                                                    "tool) to wrap into a signed receipt.")],
+    kind: Annotated[str, Field(description="Claim type to verify + attest: 'backtest', 'subset_win', "
+                                           "'model_gap', or 'judge_bias'.")],
+    inputs: Annotated[dict, Field(description="Inputs for that claim — the same params as the matching "
+                                             "verify_* tool, e.g. {'sr':0.12,'T':250,'n_trials':100} for backtest.")],
 ) -> Receipt:
-    """Turn a verification result into a portable, signed receipt (Ed25519). Attach it to your output; anyone
-    can verify — with only the public key — that the claim and verdict were checked and unaltered."""
+    """Verify a claim server-side and hand back a portable, signed receipt (Ed25519) of numguard's OWN verdict.
+    numguard **recomputes** the verdict from your inputs — it never signs a result you supply — so the receipt
+    is real proof the claim was checked, not just an assertion. Anyone can verify it with only the public key."""
     priv, pub = _issuer()
-    return _billed(api_key, "issue_receipt", lambda: _rcpt.issue_receipt(claim_result, priv, pub))
+
+    def run():
+        verdict = claims.verify_claim(kind, **(inputs or {}))   # numguard computes it — the client can't forge it
+        return _rcpt.issue_receipt(verdict, priv, pub)
+
+    return _billed(api_key, "issue_receipt", run)
 
 
 @mcp.tool(annotations=_ann("Check your free calls + credit balance"))

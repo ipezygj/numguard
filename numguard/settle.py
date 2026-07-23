@@ -14,9 +14,17 @@ Env: NUMGUARD_GAS_KEY (gas wallet private key) · NUMGUARD_RPC (Base RPC, defaul
 Requires web3 + eth_account (extra: `pip install numguard[settle]`).
 """
 from __future__ import annotations
-import base64, json, os, time
+import base64, json, os, threading, time
 
 from .x402 import Settlement
+
+# Serialize on-chain settlement: dedup an authorization by its EIP-3009 nonce (so a replayed X-PAYMENT is
+# broadcast at most once — not N times burning gas on N-1 reverts) and serialize gas-wallet nonce allocation
+# (so two concurrent settlements can't grab the same nonce and collide). The lock is held only for the
+# balance-check + build + send, NOT the on-chain receipt wait.
+_SETTLE_LOCK = threading.Lock()
+_SEEN_NONCES: dict = {}
+_SEEN_TTL = 180.0
 
 CHAIN_IDS = {"base": 8453, "base-sepolia": 84532}
 _RPCS = {"base": "https://mainnet.base.org", "base-sepolia": "https://sepolia.base.org"}
@@ -104,13 +112,6 @@ def self_verifier():
 
             w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 20}))
             token = w3.eth.contract(address=usdc, abi=_ABI)
-
-            # 3. balance check (cheap gate before spending gas). Unfunded payer stops here.
-            bal = token.functions.balanceOf(Web3.to_checksum_address(auth["from"])).call()
-            if bal < need:
-                return Settlement(False, reason=f"insufficient funds: payer USDC balance {bal} < {need}")
-
-            # 4. settle on-chain: submit the authorization, we pay gas
             gas_acct = Account.from_key(key)
             raw = bytes.fromhex(sig[2:] if sig.startswith("0x") else sig)
             r, s, v = raw[:32], raw[32:64], raw[64]
@@ -120,16 +121,31 @@ def self_verifier():
             fn = token.functions.transferWithAuthorization(
                 Web3.to_checksum_address(auth["from"]), pay_to, int(auth["value"]),
                 int(auth["validAfter"]), int(auth["validBefore"]), nonce_b, v, r, s)
-            tx = fn.build_transaction({"from": gas_acct.address,
-                                       "nonce": w3.eth.get_transaction_count(gas_acct.address),
-                                       "chainId": chain_id})
-            signed = gas_acct.sign_transaction(tx)
-            txh = w3.eth.send_raw_transaction(getattr(signed, "raw_transaction", None) or signed.rawTransaction)
+            nonce_key = str(auth["nonce"]).lower()
+
+            # 3+4. dedup, balance-gate, and broadcast under the lock (one authorization broadcast at most once;
+            # gas nonce serialized). The receipt wait happens AFTER the lock is released.
+            with _SETTLE_LOCK:
+                seen = _SEEN_NONCES.get(nonce_key)
+                if seen is not None and (time.time() - seen) < _SEEN_TTL:
+                    return Settlement(False, reason="payment already being processed")
+                bal = token.functions.balanceOf(Web3.to_checksum_address(auth["from"])).call()
+                if bal < need:   # unfunded payer: don't mark the nonce seen, so a funded retry can proceed
+                    return Settlement(False, reason=f"insufficient funds: payer USDC balance {bal} < {need}")
+                _SEEN_NONCES[nonce_key] = time.time()
+                for k in [k for k, t in list(_SEEN_NONCES.items()) if (time.time() - t) > _SEEN_TTL]:
+                    _SEEN_NONCES.pop(k, None)
+                tx = fn.build_transaction({"from": gas_acct.address,
+                                           "nonce": w3.eth.get_transaction_count(gas_acct.address, "pending"),
+                                           "chainId": chain_id})
+                signed = gas_acct.sign_transaction(tx)
+                txh = w3.eth.send_raw_transaction(getattr(signed, "raw_transaction", None) or signed.rawTransaction)
+
             rcpt = w3.eth.wait_for_transaction_receipt(txh, timeout=90)
             if rcpt.get("status") != 1:
-                return Settlement(False, reason=f"settlement tx reverted: {txh.hex()}")
+                return Settlement(False, reason="settlement failed")   # opaque: no internal detail to the caller
             return Settlement(True, tx=txh.hex(), amount_units=need)
-        except Exception as e:
-            return Settlement(False, reason=f"settle error: {str(e)[:160]}")
+        except Exception:
+            return Settlement(False, reason="settlement error")        # opaque: never leak the RPC URL / internals
 
     return verify

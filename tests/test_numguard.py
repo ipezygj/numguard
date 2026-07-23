@@ -178,3 +178,31 @@ def test_self_settle_never_clears_a_bad_signature(monkeypatch):
     xp = base64.b64encode(json.dumps(wire).encode()).decode()
     res = settle.self_verifier()(xp, ch)
     assert res.valid is False                       # bogus signature -> refused, no funds move
+
+
+def test_issue_receipt_recomputes_and_cannot_be_forged(tmp_path, monkeypatch):
+    """The receipt must attest numguard's OWN verdict, computed from inputs — not a result the caller supplies."""
+    from pathlib import Path
+    from numguard import credits, receipt
+    monkeypatch.setattr(credits, "_STORE", Path(tmp_path) / "l.json")
+    from numguard.mcp_server import issue_receipt
+    fn = getattr(issue_receipt, "fn", issue_receipt)
+    r = fn("rk", "backtest", {"sr": 0.12, "T": 250, "n_trials": 100})   # a noise strategy
+    assert r["payload"]["claim"]["survives"] in (False, 0)              # numguard says it does NOT survive
+    assert r["payload"]["public_verifiable"] is True and r["payload"]["issued_at"] > 0
+    assert receipt.verify_receipt(r) is True
+
+
+def test_credits_reject_negative_topup_and_survive_concurrency(tmp_path, monkeypatch):
+    import threading
+    from pathlib import Path
+    from numguard import credits
+    monkeypatch.setattr(credits, "_STORE", Path(tmp_path) / "l.json")
+    credits.topup("k", 10)
+    credits.topup("k", -999)                                            # negative top-up must be ignored
+    assert credits.balance("k")["balance"] == 10
+    # 50 concurrent free-tier charges on a fresh key -> exactly FREE_TIER_CALLS granted (no race bypass)
+    results = []
+    ts = [threading.Thread(target=lambda: results.append(credits.charge("race", "verify_claim"))) for _ in range(50)]
+    [t.start() for t in ts]; [t.join() for t in ts]
+    assert sum(1 for r in results if r.get("charged") == 0 and r.get("ok")) == credits.FREE_TIER_CALLS

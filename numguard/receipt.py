@@ -46,14 +46,21 @@ def keypair() -> tuple[str, str]:
 def issue_receipt(claim_result: dict, private_hex: str, public_hex: str = "",
                   ttl_seconds: int | None = None) -> dict:
     """Wrap a verify_claim result in a signed receipt."""
+    public = bool(_ED and public_hex)
+    issued = int(time.time())
     payload = {
         "issuer": ISSUER,
         "claim": {k: claim_result.get(k) for k in ("kind", "survives", "verdict")},
         "detail": {k: v for k, v in claim_result.items() if k not in ("verdict",)},
-        "issued_at": None,      # stamped by the caller if desired; kept None here (no Date.now in some envs)
+        "issued_at": issued,
         "nonce": os.urandom(8).hex(),
-        "alg": "ed25519" if (_ED and public_hex) else "hmac-sha256",
+        "alg": "ed25519" if public else "hmac-sha256",
+        # explicit so a consumer never mistakes a symmetric HMAC receipt (needs the shared secret) for a
+        # publicly-verifiable one — the moat silently degrading to HMAC would otherwise look identical.
+        "public_verifiable": public,
     }
+    if ttl_seconds:
+        payload["expires_at"] = issued + int(ttl_seconds)
     digest = _digest(payload)
     if _ED and public_hex:
         sk = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(private_hex))

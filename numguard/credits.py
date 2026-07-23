@@ -8,7 +8,7 @@ to top up, so the agent can react in-loop.
 JSON-file ledger (swap for a DB in production). Charges are recorded so every spend is auditable.
 """
 from __future__ import annotations
-import json, os, time
+import json, os, threading, time
 from pathlib import Path
 
 # per-call price in credits (1 credit = $0.01 by convention; set your own). Verification is cheap; the value
@@ -40,16 +40,35 @@ def x402_rail(tool: str) -> dict:
                    "X-PAYMENT header. Wallet-native, no signup."}
 
 
-def _load() -> dict:
+# Serialize every read-modify-write of the ledger. Render runs one worker, but REST is async and FastMCP runs
+# sync tools in a threadpool, so two charge()/topup() calls can interleave — without this, one deduction
+# clobbers the other (free-tier + balance bypass) or a partial read wipes the whole ledger.
+_LOCK = threading.Lock()
+
+
+def _read(for_write: bool = False) -> dict:
     try:
         return json.loads(_STORE.read_text(encoding="utf-8"))
-    except Exception:
+    except FileNotFoundError:
         return {}
+    except Exception:
+        # a corrupt/partial file must NEVER be treated as an empty ledger on a write path — that would
+        # overwrite every other account to nothing. Fail the request instead.
+        if for_write:
+            raise RuntimeError("ledger unreadable; refusing to overwrite")
+        return {}
+
+
+def _load() -> dict:
+    return _read(for_write=False)
 
 
 def _save(d: dict) -> None:
     _STORE.parent.mkdir(parents=True, exist_ok=True)
-    _STORE.write_text(json.dumps(d, indent=1), encoding="utf-8")
+    # atomic: write a temp file then rename, so a concurrent reader never sees a half-written ledger
+    tmp = _STORE.with_name(f"{_STORE.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(d, indent=1), encoding="utf-8")
+    os.replace(tmp, _STORE)
 
 
 def _acct(d: dict, key: str) -> dict:
@@ -67,15 +86,23 @@ def balance(api_key: str) -> dict:
 
 
 def topup(api_key: str, credits: int) -> dict:
-    d = _load(); a = _acct(d, api_key); a["balance"] += int(credits)
-    a["history"].append({"t": int(time.time()), "type": "topup", "credits": int(credits)})
-    _save(d); return {"api_key": api_key[:6] + "…", "balance": a["balance"]}
+    credits = max(0, int(credits))          # never accept a negative top-up (would drain the balance)
+    with _LOCK:
+        d = _read(for_write=True); a = _acct(d, api_key); a["balance"] += credits
+        a["history"].append({"t": int(time.time()), "type": "topup", "credits": credits})
+        _save(d)
+    return {"api_key": api_key[:6] + "…", "balance": a["balance"]}
 
 
 def charge(api_key: str, tool: str) -> dict:
     """Charge one call. Uses the free tier first, then the balance. Returns {ok, ...} or a payment_required."""
     cost = price_of(tool)
-    d = _load(); a = _acct(d, api_key)
+    with _LOCK:
+        return _charge_locked(api_key, tool, cost)
+
+
+def _charge_locked(api_key: str, tool: str, cost: int) -> dict:
+    d = _read(for_write=True); a = _acct(d, api_key)
     if a["free_used"] < FREE_TIER_CALLS:
         a["free_used"] += 1
         a["history"].append({"t": int(time.time()), "type": "free", "tool": tool})
