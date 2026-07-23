@@ -90,7 +90,12 @@ so you can test before wiring a wallet. Endpoints: `POST /verify_backtest`, `/ve
 The x402 flow, end to end: the agent POSTs → gets `402` with an `accepts` block (price, `payTo`, network) →
 signs a USDC payment → retries with an `X-PAYMENT` header → numguard verifies + settles it through the
 facilitator to your wallet → returns the result. Settlement is the real x402 `/verify` + `/settle` handshake
-(`numguard.x402.facilitator_verifier`).
+(`numguard.x402.facilitator_verifier`) — **facilitator-agnostic**: point `NUMGUARD_FACILITATOR_URL` at any
+x402 facilitator. Options:
+
+- **Testnet (free, no account):** `https://x402.org/facilitator` with `NUMGUARD_NETWORK=base-sepolia` — test the whole flow with test-USDC first.
+- **Mainnet, self-sovereign:** self-host [`x402-rs`](https://github.com/x402-rs) (open-source, no third party) and point at your own URL.
+- **Mainnet, hosted (non-Coinbase):** thirdweb or PayAI facilitators (Base) — set `NUMGUARD_FACILITATOR_AUTH` if the facilitator needs a key.
 
 **2. Serve the MCP server over HTTP** (for remote MCP hosts): `uvicorn numguard.mcp_server:app` (or
 `NUMGUARD_TRANSPORT=streamable-http python -m numguard.mcp_server`).

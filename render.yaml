@@ -10,13 +10,15 @@ services:
       - key: NUMGUARD_PAYTO
         value: "0x75c5487C44E0EA83E5F2f692BF301500a40B836f"
 
-      # START ON TESTNET (free test-USDC), then flip to mainnet for real money:
-      #   TESTNET  facilitator (no auth):  https://x402.org/facilitator   (network: base-sepolia)
-      #   MAINNET  facilitator (Coinbase): https://api.cdp.coinbase.com/platform/v2/x402
-      #            (network: base; also set NUMGUARD_FACILITATOR_AUTH = "Bearer <CDP-JWT>")
+      # numguard's verifier is facilitator-AGNOSTIC — any x402 facilitator exposing /verify + /settle works.
+      # START ON TESTNET (free test-USDC): https://x402.org/facilitator   (network: base-sepolia)
+      # MAINNET, NON-COINBASE options:
+      #   - self-host  x402-rs  (open-source Rust, no third party — most sovereign) -> your own URL
+      #   - thirdweb   facilitator (hosted)     - needs a thirdweb key -> NUMGUARD_FACILITATOR_AUTH
+      #   - PayAI      facilitator (hosted, Base/Solana/Polygon)
       - key: NUMGUARD_FACILITATOR_URL
         sync: false        # set in the dashboard (testnet URL first)
       - key: NUMGUARD_NETWORK
         value: base-sepolia   # test with test-USDC first; change to 'base' for real payments
       - key: NUMGUARD_FACILITATOR_AUTH
-        sync: false        # only needed for the Coinbase mainnet facilitator (CDP JWT)
+        sync: false        # only if your chosen facilitator needs an auth header (e.g. thirdweb key)
