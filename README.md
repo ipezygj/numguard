@@ -72,6 +72,32 @@ python -m numguard.mcp_server        # stdio MCP server; point your agent/host a
 
 Then an agent calls e.g. `verify_backtest(api_key="…", sr=0.12, T=250, n_trials=100)` and gets a verdict it can quote and a receipt it can attach.
 
+## Deploy it (hosted, paid, discoverable)
+
+**1. Host the paid HTTP API** (x402 per-call):
+
+```bash
+docker build -t numguard . && docker run -p 8080:8080 \
+  -e NUMGUARD_PAYTO=0xYOURWALLET \
+  -e NUMGUARD_FACILITATOR_URL=https://your-x402-facilitator \
+  numguard
+```
+
+Or one-click on Render: **New → Blueprint → this repo** (`render.yaml` included); set `NUMGUARD_PAYTO` +
+`NUMGUARD_FACILITATOR_URL` in the dashboard. With `NUMGUARD_PAYTO` **unset** the API runs **free (dev mode)**
+so you can test before wiring a wallet. Endpoints: `POST /verify_backtest`, `/verify_model_gap`, … ; `GET /pricing`.
+
+The x402 flow, end to end: the agent POSTs → gets `402` with an `accepts` block (price, `payTo`, network) →
+signs a USDC payment → retries with an `X-PAYMENT` header → numguard verifies + settles it through the
+facilitator to your wallet → returns the result. Settlement is the real x402 `/verify` + `/settle` handshake
+(`numguard.x402.facilitator_verifier`).
+
+**2. Serve the MCP server over HTTP** (for remote MCP hosts): `uvicorn numguard.mcp_server:app` (or
+`NUMGUARD_TRANSPORT=streamable-http python -m numguard.mcp_server`).
+
+**3. Get discovered:** `server.json` (official MCP registry) and `smithery.yaml` (Smithery) ship in the repo;
+connect the repo at those registries so agents can find the server. GitHub topics: `mcp`, `mcp-server`, `x402`.
+
 ## Design notes
 
 - Statistics are shared with `evalgate` (zero-dependency); numguard adds the backtest, receipt, metering, and MCP layers on top — it does not re-implement the core checks.

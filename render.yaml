@@ -1,0 +1,15 @@
+# One-click deploy on Render (render.com): New + > Blueprint > point at this repo.
+services:
+  - type: web
+    name: numguard
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Set these in the Render dashboard to start charging. Leave unset for free dev mode.
+      - key: NUMGUARD_PAYTO            # your receiving wallet (USDC on the network below)
+        sync: false
+      - key: NUMGUARD_FACILITATOR_URL  # an x402 facilitator that settles to your wallet
+        sync: false
+      - key: NUMGUARD_NETWORK
+        value: base

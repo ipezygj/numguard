@@ -124,5 +124,12 @@ def pricing() -> dict:
             "prices": credits.PRICES, "x402": "stablecoin pay-per-call (see numguard.x402)"}
 
 
+# ASGI app for remote MCP hosts / deployment:  uvicorn numguard.mcp_server:app
+def _http_app():
+    return mcp.streamable_http_app()
+
+
 if __name__ == "__main__":
-    mcp.run()
+    # NUMGUARD_TRANSPORT = stdio (default, for local MCP hosts) | streamable-http | sse
+    transport = os.environ.get("NUMGUARD_TRANSPORT", "stdio")
+    mcp.run(transport=transport)

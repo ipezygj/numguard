@@ -64,6 +64,43 @@ def _refuse_verifier(x_payment: str, challenge: dict) -> Settlement:
     return Settlement(False, reason="no settlement verifier wired — inject one (facilitator/RPC) for production")
 
 
+def facilitator_verifier(facilitator_url: str = None):
+    """A REAL x402 verifier that uses a facilitator's /verify + /settle endpoints (the standard flow: the
+    facilitator checks the signed payment and broadcasts the USDC transfer on-chain). Point it at a public
+    facilitator (env NUMGUARD_FACILITATOR_URL, e.g. an x402 facilitator on Base). The agent supplies a signed
+    `X-PAYMENT` payload; this verifies it, settles it to your `payTo`, and returns the tx.
+
+    Requires `httpx` (ships with the mcp SDK). Never raises — a failed call = an unsettled Settlement."""
+    facilitator_url = facilitator_url or os.environ.get("NUMGUARD_FACILITATOR_URL", "")
+
+    def verify(x_payment: str, challenge: dict) -> Settlement:
+        if not facilitator_url:
+            return Settlement(False, reason="NUMGUARD_FACILITATOR_URL not set")
+        try:
+            import base64, httpx
+            # x402: X-PAYMENT is a base64 JSON payment payload
+            try:
+                payload = json.loads(base64.b64decode(x_payment))
+            except Exception:
+                payload = json.loads(x_payment)
+            req = challenge["accepts"][0]
+            body = {"x402Version": 1, "paymentPayload": payload, "paymentRequirements": req}
+            with httpx.Client(timeout=20) as c:
+                v = c.post(facilitator_url.rstrip("/") + "/verify", json=body)
+                if v.status_code != 200 or not v.json().get("isValid", False):
+                    return Settlement(False, reason=f"facilitator /verify rejected: {v.text[:120]}")
+                s = c.post(facilitator_url.rstrip("/") + "/settle", json=body)
+                sj = s.json() if s.status_code == 200 else {}
+                if not sj.get("success", False):
+                    return Settlement(False, reason=f"facilitator /settle failed: {s.text[:120]}")
+                return Settlement(True, tx=sj.get("transaction", sj.get("txHash", "")),
+                                  amount_units=int(req["maxAmountRequired"]))
+        except Exception as e:
+            return Settlement(False, reason=f"facilitator error: {str(e)[:120]}")
+
+    return verify
+
+
 def require_payment(tool: str, price_usd: float, pay_to: str, *,
                     x_payment: Optional[str] = None, verifier: Verifier = None,
                     network: str = DEFAULT_NETWORK) -> dict:

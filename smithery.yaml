@@ -1,0 +1,17 @@
+# Smithery (smithery.ai) — MCP server registry + hosting.
+# Connect this repo at smithery.ai to index/deploy the server.
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      NUMGUARD_LEDGER:
+        type: string
+        description: "Path to the prepaid-credit ledger JSON (optional; defaults to ~/.numguard/ledger.json)."
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: "python",
+      args: ["-m", "numguard.mcp_server"],
+      env: config && config.NUMGUARD_LEDGER ? { NUMGUARD_LEDGER: config.NUMGUARD_LEDGER } : {}
+    })

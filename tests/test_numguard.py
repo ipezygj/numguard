@@ -73,3 +73,23 @@ def test_x402_challenge_and_settlement():
     paid = x402.require_payment("verify_backtest", 0.03, "0xPayTo", x_payment="h", verifier=ok)
     assert paid["status"] == 200 and paid["paid"]
     assert x402.require_payment("verify_backtest", 0.03, "0xPayTo", x_payment="h")["status"] == 402
+
+
+# ---- REST x402 layer ----
+def test_rest_dev_mode_and_pricing():
+    from starlette.testclient import TestClient
+    from numguard.rest_api import app
+    c = TestClient(app)
+    assert c.get("/health").json()["ok"] is True
+    assert "verify_backtest" in c.get("/pricing").json()["prices_usd"]
+    # dev mode (no NUMGUARD_PAYTO in test env): runs free, real verdict
+    r = c.post("/verify_backtest", json={"sr": 0.12, "T": 250, "n_trials": 100})
+    assert r.status_code == 200 and r.json()["survives"] is False
+
+
+def test_x402_facilitator_verifier_no_url_refuses():
+    import os
+    os.environ.pop("NUMGUARD_FACILITATOR_URL", None)
+    v = x402.facilitator_verifier()
+    s = v("some-x-payment", x402.payment_required("verify_backtest", 0.03, "0xPay"))
+    assert not s.valid

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.ipezygj/numguard",
+  "description": "Agent-callable verification layer: check a number before it's asserted (evals, leaderboards, backtests via Deflated Sharpe), return a signed reproducibility receipt, metered with prepaid credits + x402.",
+  "repository": {
+    "url": "https://github.com/ipezygj/numguard",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "numguard",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "runtimeHint": "python"
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://REPLACE-WITH-YOUR-DEPLOYMENT/mcp"
+    }
+  ]
+}
