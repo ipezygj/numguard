@@ -9,6 +9,7 @@ COPY numguard ./numguard
 RUN pip install --no-cache-dir . uvicorn "cryptography>=41"
 
 EXPOSE 8080
+# Bind to the host's $PORT when set (Render/Fly/Heroku assign it), else 8080. Shell form so $PORT expands.
 # The x402-paid REST API. Set NUMGUARD_PAYTO + NUMGUARD_FACILITATOR_URL to charge; unset = free dev mode.
-# To serve the MCP server over HTTP instead:  uvicorn numguard.mcp_server:app --host 0.0.0.0 --port 8080
-CMD ["uvicorn", "numguard.rest_api:app", "--host", "0.0.0.0", "--port", "8080"]
+# To serve the MCP server over HTTP instead: swap rest_api for  numguard.mcp_server:app
+CMD ["sh", "-c", "uvicorn numguard.rest_api:app --host 0.0.0.0 --port ${PORT:-8080}"]
