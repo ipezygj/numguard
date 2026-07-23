@@ -1,0 +1,89 @@
+"""Tests for the agent-proof layer: the public issuer identity + hash-chained verdict ledger.
+
+These prove the property that makes numguard's reputation machine-auditable: an agent can fetch ONE
+canonical key, verify any verdict with it, and confirm the whole history was never rewritten.
+"""
+import json
+import os
+import tempfile
+
+import pytest
+
+
+@pytest.fixture()
+def isolated(monkeypatch):
+    d = tempfile.mkdtemp()
+    monkeypatch.setenv("NUMGUARD_TRANSPARENCY", os.path.join(d, "t.jsonl"))
+    monkeypatch.setenv("NUMGUARD_ISSUER", os.path.join(d, "issuer.json"))
+    monkeypatch.delenv("NUMGUARD_PAYTO", raising=False)      # free/dev mode
+    monkeypatch.delenv("NUMGUARD_ISSUER_KEY", raising=False)
+    import importlib
+    from numguard import transparency, identity
+    importlib.reload(identity)
+    importlib.reload(transparency)
+    return transparency, identity
+
+
+def test_chain_verifies_and_tamper_is_detected(isolated):
+    transparency, _ = isolated
+    from numguard import receipt as R
+    priv, pub = R.keypair()
+    for i in range(4):
+        r = R.issue_receipt({"claim": {"kind": "backtest", "survives": bool(i % 2)}}, priv, pub)
+        transparency.publish(r, ts=1000 + i)
+    assert transparency.verify_log()["ok"]
+    assert transparency.head()["count"] == 4
+    # rewrite a past entry -> the chain must break exactly there
+    store = os.environ["NUMGUARD_TRANSPARENCY"]
+    lines = open(store, encoding="utf-8").read().splitlines()
+    e = json.loads(lines[2]); e["digest"] = "00" * 32
+    lines[2] = json.dumps(e, separators=(",", ":"))
+    open(store, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    bad = transparency.verify_log()
+    assert not bad["ok"] and bad["bad_seq"] == 2
+
+
+def test_every_ledger_receipt_verifies_with_the_published_pubkey(isolated):
+    transparency, identity = isolated
+    from numguard import receipt as R
+    priv, pub = identity.issuer()
+    for i in range(3):
+        transparency.publish(R.issue_receipt({"claim": {"kind": "backtest", "survives": True}}, priv, pub))
+    card = identity.identity_card()
+    assert card["public_verifiable"] and len(card["public_key"]) == 64
+    for e in transparency.entries(0, 10):
+        # an agent has ONLY the receipt + the published pubkey — that must be enough
+        assert e["receipt"]["public_key"] == card["public_key"]
+        assert R.verify_receipt(e["receipt"])
+
+
+def test_signed_head_commits_to_the_whole_history(isolated):
+    transparency, _ = isolated
+    from numguard import receipt as R
+    priv, pub = None, None
+    from numguard import identity
+    priv, pub = identity.issuer()
+    transparency.publish(R.issue_receipt({"claim": {"kind": "backtest", "survives": True}}, priv, pub))
+    sh = transparency.signed_head()
+    assert R.verify_receipt(sh["receipt"])
+    assert sh["receipt"]["payload"]["detail"]["log_head"]["head_hash"] == transparency.head()["head_hash"]
+
+
+def test_http_agent_proof_flow(isolated):
+    pytest.importorskip("httpx")
+    from starlette.testclient import TestClient
+    import importlib
+    from numguard import rest_api
+    importlib.reload(rest_api)                 # pick up the isolated env + free mode
+    from numguard import receipt as R
+    c = TestClient(rest_api.app)
+    r = c.post("/issue_receipt", json={"kind": "backtest", "inputs": {"sr": 0.12, "T": 250, "n_trials": 100}})
+    assert r.status_code == 200, r.text
+    pk = c.get("/pubkey").json()
+    feed = c.get("/receipts").json()
+    assert feed["head"]["count"] >= 1
+    for e in feed["entries"]:
+        assert e["receipt"]["public_key"] == pk["public_key"]
+        assert R.verify_receipt(e["receipt"])
+    assert c.get("/log/verify").json()["ok"]
+    assert R.verify_receipt(c.get("/log/head").json()["receipt"])

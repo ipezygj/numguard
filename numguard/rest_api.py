@@ -17,7 +17,8 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from . import claims, judge as _judge, x402, _limits
+from . import claims, judge as _judge, x402, _limits, identity, transparency, receipt as _rcpt
+from . import backtest_battery as _battery
 
 # ---- hardening limits (a public, real-money endpoint) ----
 MAX_ITEMS = _limits.MAX_ITEMS   # cap list/matrix sizes so a huge payload can't pin the CPU
@@ -50,6 +51,11 @@ def _guard_body(tool: str, body: dict) -> None:
         _limits.check_list("truth_caught", body.get("truth_caught"))
     if tool == "audit_leaderboard":
         _limits.check_leaderboard(body.get("results", {}), body.get("n_boot", 1000))
+    if tool == "verify_backtest_series":
+        _limits.check_list("returns", body.get("returns"))
+        for nm in ("positions", "asset_returns", "turnover"):
+            if body.get(nm) is not None:
+                _limits.check_list(nm, body.get(nm))
 
 try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
@@ -63,6 +69,19 @@ NETWORK = os.environ.get("NUMGUARD_NETWORK", "base")
 from . import settle
 _VERIFIER = settle.self_verifier() or x402.facilitator_verifier()
 
+def _issue_and_publish(b: dict) -> dict:
+    """Verify a claim server-side, sign a receipt with numguard's issuer key, AND append it to the public
+    transparency ledger. Returns the receipt + its inclusion (seq/hash) so the caller has both the portable
+    proof and a pointer into the auditable record. numguard recomputes the verdict — it never signs a
+    caller-supplied result."""
+    kind, inputs = b["kind"], (b.get("inputs") or {})
+    priv, pub = identity.issuer()
+    verdict = claims.verify_claim(kind, **inputs)
+    receipt = _rcpt.issue_receipt(verdict, priv, pub)
+    entry = transparency.publish(receipt)
+    return {"receipt": receipt, "log": {"seq": entry["seq"], "hash": entry["hash"], "prev": entry["prev"]}}
+
+
 # path -> (tool name, price in USD, handler(body)->dict)
 ROUTES = {
     "verify_backtest":   (0.03, lambda b: claims.verify_claim("backtest", **b)),
@@ -72,6 +91,8 @@ ROUTES = {
     "calibrate_judge":   (0.05, lambda b: _judge.calibrate_judge(b["judge_caught"], b["truth_caught"])),
     "audit_leaderboard": (0.05, lambda b: ({"verdict": str(audit_matrix(b["results"], n_boot=b.get("n_boot", 1000), seed=0))}
                                             if audit_matrix else {"error": "needs evalgate: pip install git+https://github.com/ipezygj/evalgate"})),
+    # notary write-path: issue a signed receipt AND publish it to the public, hash-chained ledger
+    "issue_receipt":     (0.05, _issue_and_publish),
 }
 
 
@@ -137,6 +158,67 @@ async def health(request):
     return JSONResponse({"ok": True, "service": "numguard", "paid": bool(PAYTO)})
 
 
-routes = [Route("/pricing", pricing), Route("/health", health)]
+# ----------------------------------------------------------------------------------------------------
+# AGENT-PROOF layer (free, public, read-only): the reputation an agent can independently audit.
+#   /pubkey                 the canonical issuer key that verifies EVERY numguard receipt
+#   /.well-known/numguard.json  discovery doc (identity + where the proofs live)
+#   /log/head               a signed fingerprint of the WHOLE verdict history (pin it)
+#   /log/verify             recompute the hash chain — confirm nothing was rewritten
+#   /receipts               browse the track record; each entry is a full, verifiable receipt
+#   /receipts/{digest}      one verdict by its digest
+# These are free on purpose: a reputation you have to pay to inspect is not a reputation.
+def _rl_guard(request):
+    return None if _rate_ok(_client_ip(request)) else JSONResponse(
+        {"error": "rate limit exceeded, retry shortly"}, status_code=429)
+
+
+async def pubkey(request):
+    return JSONResponse(identity.identity_card())
+
+
+async def well_known(request):
+    card = identity.identity_card()
+    card["endpoints"] = {"pubkey": "/pubkey", "log_head": "/log/head", "log_verify": "/log/verify",
+                         "receipts": "/receipts", "receipt_by_digest": "/receipts/{digest}",
+                         "issue_receipt": "/issue_receipt (POST, paid)"}
+    card["what"] = ("numguard signs every verdict (Ed25519) and appends it to a hash-chained public ledger. "
+                    "Verify any receipt with the pubkey; audit the whole record with /log/verify.")
+    return JSONResponse(card)
+
+
+async def log_head(request):
+    if (r := _rl_guard(request)) is not None:
+        return r
+    return JSONResponse(transparency.signed_head())
+
+
+async def log_verify(request):
+    if (r := _rl_guard(request)) is not None:
+        return r
+    return JSONResponse(transparency.verify_log())
+
+
+async def receipts(request):
+    if (r := _rl_guard(request)) is not None:
+        return r
+    try:
+        offset = int(request.query_params.get("offset", 0))
+        limit = int(request.query_params.get("limit", 50))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "offset/limit must be integers"}, status_code=400)
+    return JSONResponse({"head": transparency.head(), "entries": transparency.entries(offset, limit)})
+
+
+async def receipt_by_digest(request):
+    if (r := _rl_guard(request)) is not None:
+        return r
+    e = transparency.get(request.path_params["digest"])
+    return JSONResponse(e, status_code=200) if e else JSONResponse({"error": "not found"}, status_code=404)
+
+
+routes = [Route("/pricing", pricing), Route("/health", health),
+          Route("/pubkey", pubkey), Route("/.well-known/numguard.json", well_known),
+          Route("/log/head", log_head), Route("/log/verify", log_verify),
+          Route("/receipts", receipts), Route("/receipts/{digest}", receipt_by_digest)]
 routes += [Route(f"/{name}", _make(name, price, fn), methods=["POST"]) for name, (price, fn) in ROUTES.items()]
 app = Starlette(routes=routes)
