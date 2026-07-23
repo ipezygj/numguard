@@ -10,7 +10,7 @@ services:
       - key: NUMGUARD_PAYTO
         value: "0x75c5487C44E0EA83E5F2f692BF301500a40B836f"   # your receiving wallet (public)
       - key: NUMGUARD_NETWORK
-        value: base-sepolia        # testnet first; change to 'base' for real money
+        value: base                # Base mainnet — real USDC
       - key: NUMGUARD_FACILITATOR_URL
         fromService:               # auto-wired to the facilitator (internal host:port; numguard adds http://)
           type: web
