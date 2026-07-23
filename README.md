@@ -15,6 +15,7 @@ Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval s
 | MCP tool | What an agent asks it |
 |---|---|
 | **`verify_backtest`** | *Is this strategy's Sharpe real, or the luckiest of the many I tried?* (Deflated Sharpe Ratio) |
+| **`verify_backtest_series`** | *Run the full integrity battery on my actual returns — look-ahead, autocorrelation, regime, tail, overfitting.* |
 | `verify_subset_win` | *Does "we lead on subset X" survive correcting for how many subsets I tested?* |
 | `verify_model_gap` | *Is the gap between these two models bigger than the test set can resolve?* |
 | `verify_judge_bias` | *Is my judge's preference real, or just longer / first / same-family?* |
@@ -39,6 +40,27 @@ deflated_sharpe(sr=0.15, T=1000, n_trials=1)
 ```
 
 The contrast is the whole point: a single-test probability of **0.97** ("significant!") collapses to a deflated **0.26** ("noise") once you account for the 100 strategies that were tried. An agent optimizing over strategies should call this before it trusts — or publishes — a backtest.
+
+### The full integrity battery — what a Deflated Sharpe still misses
+
+DSR catches *best-of-N*. It does **not** catch same-bar look-ahead, autocorrelation inflating the Sharpe, regime dependence, tail fantasy, or one-lucky-epoch fragility. `verify_backtest_series` runs the whole battery on the **actual returns series** and returns a `risk` level (`none`/`medium`/`high`/`critical`) plus the checks that flagged:
+
+| check | catches |
+|---|---|
+| `leakage` | same-bar look-ahead (position "predicts" the bar it's in) — **critical** |
+| `pbo` | overfitting beyond `n_trials` (Prob. of Backtest Overfitting) — **critical** |
+| `hac_sharpe` | autocorrelation / stale marks inflating the Sharpe (Newey–West) |
+| `regime_stability` | cherry-picked window (per-block Sharpe + CUSUM break) |
+| `bootstrap_stability` | edge lives in one epoch (block-bootstrap Sharpe CI) |
+| `drawdown` | tail/smoothing fantasy (Calmar / CVaR / expected-vs-realized max-DD) |
+| `permutation`, `conditional_hetero`, `cost_capacity`, `bh_fdr` | order structure, vol clustering, fill realism, multiple testing |
+
+The tell (`python examples/catch_a_fake_backtest.py`): a look-ahead strategy shows an annualised Sharpe of **+20** and a Deflated Sharpe that **survives** — yet the battery flags it **critical** on `leakage` (same-bar corr 0.79 vs next-bar 0.05). The DSR waves the fiction through; the battery does not.
+
+```python
+verify_backtest_series(api_key="…", returns=[...], positions=[...], asset_returns=[...])
+# {"risk": "critical", "survives": false, "flags": ["leakage", ...], "checks": {...}}
+```
 
 ## Signed receipts (the part that compounds)
 

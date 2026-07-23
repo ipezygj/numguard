@@ -97,6 +97,8 @@ class Pricing(_Out):
 
 class BatteryVerdict(_Out):
     survives: Annotated[Optional[Any], Field(description="True only if NO integrity check flags.")] = None
+    risk: Annotated[Optional[Any], Field(description="none / medium / high / critical — the worst flagged "
+                                                     "check (look-ahead & overfit = critical).")] = None
     n_checks: Optional[Any] = None
     flags: Annotated[Optional[Any], Field(description="Names of the checks that tripped.")] = None
     checks: Annotated[Optional[Any], Field(description="Per-check results (hac_sharpe, regime_stability, "

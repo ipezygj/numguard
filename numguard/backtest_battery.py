@@ -323,10 +323,19 @@ def run_battery(returns: Sequence[float], *, positions: Optional[Sequence[float]
 
     flags = [name for name, r in checks.items() if r.get("flag")]
     survives = len(flags) == 0
+    # severity: look-ahead and overfitting make the backtest fiction (critical); inflated/fragile Sharpe is
+    # high; tail/cost/vol issues are medium. The worst flagged check sets the level.
+    _SEV = {"leakage": "critical", "pbo": "critical",
+            "hac_sharpe": "high", "regime_stability": "high", "bootstrap_stability": "high",
+            "drawdown": "medium", "permutation": "medium", "conditional_hetero": "medium",
+            "cost_capacity": "medium"}
+    _ORDER = {"critical": 3, "high": 2, "medium": 1}
+    risk = "none" if survives else max((_SEV.get(f, "medium") for f in flags), key=lambda s: _ORDER[s])
     verdict = ("PASS — no integrity red flag on this battery (still not a promise of future return)."
                if survives else
-               f"FLAGGED by {len(flags)} check(s): {', '.join(flags)}. Treat the headline Sharpe with suspicion.")
-    return {"kind": "backtest_battery", "survives": survives, "n_checks": len(checks),
+               f"{risk.upper()} — flagged by {len(flags)} check(s): {', '.join(flags)}. "
+               f"Treat the headline Sharpe with suspicion.")
+    return {"kind": "backtest_battery", "survives": survives, "risk": risk, "n_checks": len(checks),
             "flags": flags, "checks": checks, "verdict": verdict}
 
 
