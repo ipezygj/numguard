@@ -17,11 +17,27 @@ short, stable handle an agent can pin.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 
 from . import receipt as _rcpt
+
+
+def _seed_from_env(value: str) -> str:
+    """Turn ANY NUMGUARD_ISSUER_KEY value into a valid 32-byte Ed25519 private key (hex).
+
+    A raw 64-hex string is used directly. Anything else (a Render-generated secret, a passphrase you
+    typed on your phone) is hashed to 32 bytes with SHA-256 — deterministic, so the same env value
+    always yields the same identity. This lets you set the key WITHOUT ever seeing/handling raw key
+    bytes: on Render, mark NUMGUARD_ISSUER_KEY as a generated secret (or type a strong random string)
+    and the server derives a stable Ed25519 identity from it. Use high entropy — a weak passphrase is
+    a weak key."""
+    v = (value or "").strip()
+    if len(v) == 64 and all(c in "0123456789abcdefABCDEF" for c in v):
+        return v.lower()
+    return hashlib.sha256(v.encode()).hexdigest()
 
 _KEYFILE = Path(os.environ.get("NUMGUARD_ISSUER", Path.home() / ".numguard" / "issuer.json"))
 
@@ -45,7 +61,8 @@ def issuer() -> tuple[str, str]:
     """(private_hex, public_hex) for the stable issuer identity. Resolves env -> file -> generate."""
     env = os.environ.get("NUMGUARD_ISSUER_KEY", "").strip()
     if env:
-        return env, _pub_from_priv(env)
+        priv = _seed_from_env(env)     # accepts a raw hex key OR any generated secret / passphrase
+        return priv, _pub_from_priv(priv)
     try:
         d = json.loads(_KEYFILE.read_text(encoding="utf-8"))
         return d["priv"], d["pub"]
