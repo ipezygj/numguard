@@ -10,6 +10,9 @@ Agents now produce an explosion of numbers: eval scores, A/B results, "the agent
 
 Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval statistics; adds the pieces agents specifically need — a **Deflated Sharpe Ratio** for backtests, **judge calibration**, **signed receipts**, and **metering an agent can actually pay** (prepaid credits + x402 pay-per-call). Exposed as an **MCP server**, so any agent can call it.
 
+> **See it work** — [proof gallery](docs/PROOF_GALLERY.md): 8 real numbers run through the real checks, 3 survive and 5 are flagged, each with a receipt you can verify offline. Don't trust it — verify it.
+> **Wire it into an agent in one line** — [INTEGRATE.md](docs/INTEGRATE.md): the local reflex, an MCP config, and LangChain / CrewAI tool wrappers.
+
 ---
 
 ## The tools
