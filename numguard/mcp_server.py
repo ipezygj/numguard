@@ -412,14 +412,20 @@ def open_commitment(
                                                   "to hold to.")],
     periods_per_year: Annotated[int, Field(description="Periods per year (252 daily).")] = 252,
     label: Annotated[str, Field(description="Optional label for the strategy.")] = "",
+    bond_usd: Annotated[float, Field(description="Optional bond (skin in the game) you stake on the claim "
+                                                "holding — lets a reputation-less agent buy credibility.")] = 0.0,
+    resolve_after: Annotated[int, Field(description="Observations after which a bonded claim settles "
+                                                   "(HELD or BROKEN).")] = 0,
 ) -> dict:
     """Open a commitment that numguard tracks over time. It returns a commitment_id; report live returns to it
     with report_returns as they arrive. numguard folds each return into running statistics at O(1) and never
-    stores the raw returns — so holding the promise indefinitely costs constant memory and no background compute
-    (it only updates when you push data)."""
+    stores the raw returns — so holding the promise indefinitely costs constant memory and no background compute.
+    COLD START: a new agent with no track record can post `bond_usd` behind the claim — confidence-at-stake
+    substitutes for the history it doesn't have yet; the bonded outcome becomes a permanent, attestable credential."""
     return _billed(api_key, "open_commitment",
                    lambda: _commit.open_commitment(claimed_sr, periods_per_year=periods_per_year, label=label,
-                                                   owner=_commit.owner_hash(api_key)))
+                                                   owner=_commit.owner_hash(api_key),
+                                                   bond_usd=bond_usd, resolve_after=resolve_after))
 
 
 @mcp.tool(annotations=_ann("Report live returns to a commitment (streaming)"))

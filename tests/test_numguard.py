@@ -409,3 +409,25 @@ def test_eas_attestation_encoding_and_schema(monkeypatch):
     assert len(bytes.fromhex(d["encoded_data"][2:])) % 32 == 0          # valid ABI encoding
     assert "error" in eas.attest_credential("short", "k", True, "v")
     assert "unavailable" in eas.attest_credential("ef" * 32, "k", True, "v")["error"]
+
+
+def test_bonded_commitment_cold_start(tmp_path, monkeypatch):
+    """A reputation-less agent bootstraps trust by BONDING a claim: it stakes confidence, and the resolved
+    outcome (HELD/BROKEN) becomes a permanent, attestable credential — no track record or code needed."""
+    import random
+    from pathlib import Path
+    from numguard import commitments, receipt
+    monkeypatch.setattr(commitments, "_STORE", Path(tmp_path) / "c.json")
+    rng = random.Random(51)
+    owner = commitments.owner_hash("newbie")
+    o = commitments.open_commitment(0.15, owner=owner, bond_usd=500, resolve_after=300)
+    assert o["bonded"]["bond_usd"] == 500.0
+    cid = o["commitment_id"]
+    for _ in range(7):
+        commitments.report(cid, [rng.gauss(0.002, 0.01) for _ in range(50)], owner=owner)
+    st = commitments.status(cid, owner=owner)
+    assert st["verdict_label"] == "HELD" and st["bond_resolved"] is True and st["bond_outcome"] == "HELD"
+    priv, pub = receipt.keypair()
+    rc = commitments.signed_track_record(cid, priv, pub, owner=owner)
+    assert rc["payload"]["detail"]["bond_usd"] == 500.0 and rc["payload"]["detail"]["bond_outcome"] == "HELD"
+    assert receipt.verify_receipt(rc) is True
