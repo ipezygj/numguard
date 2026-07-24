@@ -178,6 +178,12 @@ def _rl_guard(request):
         {"error": "rate limit exceeded, retry shortly"}, status_code=429)
 
 
+def _ledger_error(e: Exception) -> JSONResponse:
+    # the ledger backend (durable Turso, or the local file) failed — don't 500; surface a clean, safe
+    # reason (the message never contains the token) so a misconfig is diagnosable, not opaque.
+    return JSONResponse({"error": "ledger backend unavailable", "detail": str(e)[:200]}, status_code=503)
+
+
 async def pubkey(request):
     return JSONResponse(identity.identity_card())
 
@@ -195,13 +201,19 @@ async def well_known(request):
 async def log_head(request):
     if (r := _rl_guard(request)) is not None:
         return r
-    return JSONResponse(transparency.signed_head())
+    try:
+        return JSONResponse(transparency.signed_head())
+    except Exception as e:
+        return _ledger_error(e)
 
 
 async def log_verify(request):
     if (r := _rl_guard(request)) is not None:
         return r
-    return JSONResponse(transparency.verify_log())
+    try:
+        return JSONResponse(transparency.verify_log())
+    except Exception as e:
+        return _ledger_error(e)
 
 
 async def receipts(request):
@@ -212,13 +224,19 @@ async def receipts(request):
         limit = int(request.query_params.get("limit", 50))
     except (TypeError, ValueError):
         return JSONResponse({"error": "offset/limit must be integers"}, status_code=400)
-    return JSONResponse({"head": transparency.head(), "entries": transparency.entries(offset, limit)})
+    try:
+        return JSONResponse({"head": transparency.head(), "entries": transparency.entries(offset, limit)})
+    except Exception as e:
+        return _ledger_error(e)
 
 
 async def receipt_by_digest(request):
     if (r := _rl_guard(request)) is not None:
         return r
-    e = transparency.get(request.path_params["digest"])
+    try:
+        e = transparency.get(request.path_params["digest"])
+    except Exception as ex:
+        return _ledger_error(ex)
     return JSONResponse(e, status_code=200) if e else JSONResponse({"error": "not found"}, status_code=404)
 
 
