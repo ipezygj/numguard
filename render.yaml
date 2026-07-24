@@ -9,6 +9,9 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
+      - key: PYTHONUTF8
+        value: "1"                 # force UTF-8 mode: a slim container's C locale otherwise mojibake's
+                                   # non-ASCII (e.g. a verdict's em-dash), which would break a receipt digest
       - key: NUMGUARD_PAYTO
         value: "0x75c5487C44E0EA83E5F2f692BF301500a40B836f"   # your receiving wallet (public)
       - key: NUMGUARD_NETWORK

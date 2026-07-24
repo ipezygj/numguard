@@ -22,6 +22,7 @@ service is one process); appends are serialized under a lock.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -137,12 +138,27 @@ def _turso(sql: str, args=(), _ensure: bool = True):
     return rows, res.get("affected_row_count", 0)
 
 
+def _blob(receipt: dict) -> str:
+    """Serialize a receipt for storage as pure-ASCII base64. A receipt's signature is over the EXACT
+    payload bytes, so the store→transport→retrieve round-trip must be byte-identical. Storing raw JSON
+    exposed the digest to any encoding hiccup in the hosting container (a non-UTF-8 locale mojibake'd a
+    verdict's em-dash → the receipt no longer verified). base64 is immune: no codec/locale can alter it."""
+    return base64.b64encode(json.dumps(receipt, separators=(",", ":")).encode("utf-8")).decode("ascii")
+
+
+def _unblob(s: str) -> dict:
+    try:
+        return json.loads(base64.b64decode(s).decode("utf-8"))
+    except Exception:
+        return json.loads(s)            # legacy plain-JSON rows written before base64 storage
+
+
 def _row_to_entry(row: dict) -> dict:
     sv = row.get("survives")
     return {"seq": int(row["seq"]), "ts": int(row["ts"]), "digest": row["digest"], "kind": row["kind"],
             "survives": (True if sv == "true" else False if sv == "false" else None),
             "public_key": row.get("public_key") or "", "prev": row["prev"], "hash": row["hash"],
-            "receipt": json.loads(row["receipt"]) if row.get("receipt") else None}
+            "receipt": _unblob(row["receipt"]) if row.get("receipt") else None}
 
 
 def _iter_lines():
@@ -199,7 +215,7 @@ def publish(receipt: dict, ts: int | None = None) -> dict:
             _turso("INSERT INTO numguard_ledger (seq,ts,digest,kind,survives,public_key,prev,hash,receipt) "
                    "VALUES (?,?,?,?,?,?,?,?,?)",
                    (seq, ts, digest, kind, sv, entry["public_key"], prev_hash, h,
-                    json.dumps(receipt, separators=(",", ":"))))
+                    _blob(receipt)))
             return entry
         _STORE.parent.mkdir(parents=True, exist_ok=True)
         with _STORE.open("a", encoding="utf-8") as fh:
