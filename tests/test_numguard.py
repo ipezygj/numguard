@@ -317,3 +317,19 @@ def test_forward_reconcile_holds_and_breaks(tmp_path, monkeypatch):
     fn = getattr(issue_receipt, "fn", issue_receipt)
     r = fn("k", "forward_check", {"claimed_sr": claimed, "realized_returns": [rng.gauss(0.0, 0.012) for _ in range(750)]})
     assert r["payload"]["claim"]["kind"] == "forward_check" and receipt.verify_receipt(r) is True
+
+
+def test_receipt_spec_verifies_any_issuer_free():
+    """The open standard: verify_any checks any compliant receipt against its OWN embedded key (issuer-
+    agnostic), passes valid ones, and rejects tampering — no numguard-specific state."""
+    from numguard import receipt as R, receipt_spec as S
+    priv, pub = R.keypair()
+    rc = R.issue_receipt({"kind": "backtest", "survives": True, "verdict": "real"}, priv, pub)
+    assert S.validate(rc)["ok"] is True
+    v = S.verify_any(rc)
+    assert v["valid"] is True and v["spec"] == "vcr/1" and v["public_key"] == pub
+    rc["payload"]["claim"]["survives"] = False              # tamper
+    assert S.verify_any(rc)["valid"] is False
+    # a structurally broken receipt fails validation, not with a crash
+    assert S.verify_any({"payload": {}})["valid"] is False
+    assert S.describe()["spec"] == "vcr/1" and "schema" in S.describe()

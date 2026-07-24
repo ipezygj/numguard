@@ -19,6 +19,7 @@ from starlette.routing import Route
 
 from . import claims, judge as _judge, x402, _limits, identity, transparency, receipt as _rcpt
 from . import backtest_battery as _battery
+from . import receipt_spec as _spec
 
 # ---- hardening limits (a public, real-money endpoint) ----
 MAX_ITEMS = _limits.MAX_ITEMS   # cap list/matrix sizes so a huge payload can't pin the CPU
@@ -170,6 +171,26 @@ async def health(request):
     return JSONResponse({"ok": True, "service": "numguard", "paid": bool(PAYTO)})
 
 
+async def verify_receipt_route(request):
+    """FREE, public: verify ANY compliant claim receipt (vcr/1), issuer-agnostic. Drives adoption of the open
+    standard — anyone can check whether a number was verified, and by whom, at no cost."""
+    if not _rate_ok(_client_ip(request)):
+        return JSONResponse({"error": "rate limit exceeded, retry shortly"}, status_code=429)
+    raw = await request.body()
+    if len(raw) > MAX_BODY_BYTES:
+        return JSONResponse({"error": "payload too large"}, status_code=413)
+    try:
+        rc = json.loads(raw) if raw else {}
+    except Exception:
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    return JSONResponse(_spec.verify_any(rc))
+
+
+async def receipt_spec_route(request):
+    """FREE, public: the Verifiable-Claim-Receipt open standard (schema + how to verify)."""
+    return JSONResponse(_spec.describe())
+
+
 # ----------------------------------------------------------------------------------------------------
 # AGENT-PROOF layer (free, public, read-only): the reputation an agent can independently audit.
 #   /pubkey                 the canonical issuer key that verifies EVERY numguard receipt
@@ -285,6 +306,8 @@ routes = [Route("/pricing", pricing), Route("/health", health),
           Route("/pubkey", pubkey), Route("/.well-known/numguard.json", well_known),
           Route("/log/head", log_head), Route("/log/verify", log_verify),
           Route("/receipts", receipts), Route("/receipts/{digest}", receipt_by_digest),
+          Route("/verify_receipt", verify_receipt_route, methods=["POST"]),
+          Route("/receipt_spec", receipt_spec_route),
           Route("/admin/seed", admin_seed, methods=["POST"])]
 routes += [Route(f"/{name}", _make(name, price, fn), methods=["POST"]) for name, (price, fn) in ROUTES.items()]
 app = Starlette(routes=routes)

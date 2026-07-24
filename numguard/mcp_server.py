@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt, _limits
 from . import backtest_battery as _battery
 from . import forward as _forward
+from . import receipt_spec as _spec
 
 
 class _Out(BaseModel):
@@ -376,6 +377,22 @@ def reconcile_backtest(
     _limits.check_list("realized_returns", realized_returns)
     return _billed(api_key, "reconcile_backtest",
                    lambda: _forward.reconcile(claimed_sr, realized_returns, periods_per_year=periods_per_year))
+
+
+@mcp.tool(annotations=_ann("Verify ANY claim receipt (free, issuer-agnostic)"))
+def verify_receipt(receipt: Annotated[dict, Field(description="A verifiable-claim receipt (vcr/1) from any "
+                                                             "issuer.")]) -> dict:
+    """Verify any compliant claim receipt — FREE, no api_key, issuer-agnostic. Checks the structure + the
+    Ed25519 signature against the receipt's OWN embedded public key (offline, no numguard account needed). Use
+    it to check whether a number an agent handed you was actually verified, and by whom, before you trust it."""
+    return _spec.verify_any(receipt)
+
+
+@mcp.tool(annotations=_ann("The open receipt standard (schema + how to verify)"))
+def receipt_spec() -> dict:
+    """The Verifiable-Claim-Receipt open standard (vcr/1): schema, algorithms, canonical form, and how to
+    verify — so anyone can issue and verify compliant receipts without numguard."""
+    return _spec.describe()
 
 
 @mcp.tool(annotations=_ann("Check your free calls + credit balance"))
