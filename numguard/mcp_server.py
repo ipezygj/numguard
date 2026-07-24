@@ -22,6 +22,7 @@ from . import backtest_battery as _battery
 from . import forward as _forward
 from . import receipt_spec as _spec
 from . import commitments as _commit
+from . import anchor as _anchor
 
 
 class _Out(BaseModel):
@@ -450,6 +451,22 @@ def commitment_receipt(api_key: ApiKey,
     return _billed(api_key, "issue_receipt",
                    lambda: _commit.signed_track_record(commitment_id, priv, pub,
                                                        owner=_commit.owner_hash(api_key)))
+
+
+@mcp.tool(annotations=_ann("Anchor a receipt on-chain (a portable credential, not a coin)"))
+def anchor_receipt(
+    api_key: ApiKey,
+    receipt: Annotated[dict, Field(description="A valid vcr/1 receipt to anchor on Base.")],
+) -> dict:
+    """Anchor a signed receipt's digest on Base — an IMMUTABLE, timestamped, publicly-checkable on-chain proof
+    that this exact verification existed. Turns a receipt (or a track record) into a portable credential other
+    protocols can read: reputation as a real-world asset. NOT a token — no mint, no speculation; you pay the gas
+    once and the attestation is yours forever. Only VALID receipts are anchored."""
+    v = _spec.verify_any(receipt)
+    if not v.get("valid"):
+        return {"error": f"refusing to anchor an unverifiable receipt: {v.get('reason')}"}
+    digest = receipt.get("digest", "")
+    return _billed(api_key, "anchor_receipt", lambda: _anchor.anchor_digest(digest))
 
 
 @mcp.tool(annotations=_ann("Verify ANY claim receipt (free, issuer-agnostic)"))

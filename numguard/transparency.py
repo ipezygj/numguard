@@ -56,8 +56,13 @@ import urllib.error as _urllib_error
 import re as _re
 
 _raw_cfg = os.environ.get("NUMGUARD_TURSO_URL", "") + " " + os.environ.get("NUMGUARD_TURSO_TOKEN", "")
+# The token is matched on a WHITESPACE-STRIPPED copy: a phone dashboard field can inject spaces/newlines
+# INTO the middle of a long JWT (line-wrapping) — neither a URL nor a JWT contains real whitespace, so
+# removing it can only repair the value. The URL is matched on the original (stops at whitespace, then
+# _http_base drops any ?authToken query anyway).
+_no_ws = _re.sub(r'\s+', '', _raw_cfg)
 _url_m = _re.search(r'(?:libsql|https|http)://[^\s]+', _raw_cfg)
-_jwt_m = _re.search(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', _raw_cfg)
+_jwt_m = _re.search(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', _no_ws)
 _TURSO_URL = _url_m.group(0) if _url_m else ""
 _TURSO_TOKEN = _jwt_m.group(0) if _jwt_m else ""
 _DDL = ("CREATE TABLE IF NOT EXISTS numguard_ledger (seq INTEGER PRIMARY KEY, ts INTEGER, digest TEXT, kind TEXT, "

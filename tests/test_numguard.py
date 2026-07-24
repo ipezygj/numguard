@@ -382,3 +382,16 @@ def test_commitment_owner_binding_and_signed_track_record(tmp_path, monkeypatch)
     rc = commitments.signed_track_record(cid, priv, pub, owner=alice)
     assert rc["payload"]["claim"]["kind"] == "track_record" and receipt.verify_receipt(rc) is True
     assert "error" in commitments.signed_track_record(cid, priv, pub, owner=bob)  # bob can't sign alice's record
+
+
+def test_anchor_builds_calldata_and_refuses_bad_receipts(monkeypatch):
+    """On-chain anchoring: dry-run builds tagged calldata with no key; a bad digest and an unverifiable receipt
+    are refused before any chain interaction; without a gas key it fails safe (never crashes)."""
+    monkeypatch.delenv("NUMGUARD_GAS_KEY", raising=False)
+    from numguard import anchor, receipt
+    d = "12" * 32
+    dry = anchor.anchor_digest(d, dry_run=True)
+    assert dry["dry_run"] and dry["calldata"].startswith("0x4e475243503031"[:14]) is False  # tag is NGRCP1
+    assert dry["tag"] == "NGRCP1" and d in dry["calldata"]
+    assert "error" in anchor.anchor_digest("short")
+    assert "unavailable" in anchor.anchor_digest(d)["error"]        # no key -> safe error, no crash
