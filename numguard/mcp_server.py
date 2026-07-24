@@ -23,6 +23,7 @@ from . import forward as _forward
 from . import receipt_spec as _spec
 from . import commitments as _commit
 from . import anchor as _anchor
+from . import eas as _eas
 
 
 class _Out(BaseModel):
@@ -467,6 +468,27 @@ def anchor_receipt(
         return {"error": f"refusing to anchor an unverifiable receipt: {v.get('reason')}"}
     digest = receipt.get("digest", "")
     return _billed(api_key, "anchor_receipt", lambda: _anchor.anchor_digest(digest))
+
+
+@mcp.tool(annotations=_ann("Attest a verification on-chain via EAS (composable credential)"))
+def attest_onchain(
+    api_key: ApiKey,
+    receipt: Annotated[dict, Field(description="A valid vcr/1 receipt to attest.")],
+    recipient: Annotated[str, Field(description="Optional on-chain address the credential is ABOUT (the "
+                                               "agent's wallet), so protocols can look it up by that address.")] = "",
+) -> dict:
+    """Write a numguard verification as an Ethereum Attestation Service (EAS) attestation on Base — a QUERYABLE,
+    COMPOSABLE on-chain credential. Any protocol can then look up the recipient's address in EAS and read the
+    numguard verdict, to gate / allocate / collateralize on a proven track record. Reputation as a real-world
+    asset, industry-standard, no token. Only VALID receipts are attested."""
+    v = _spec.verify_any(receipt)
+    if not v.get("valid"):
+        return {"error": f"refusing to attest an unverifiable receipt: {v.get('reason')}"}
+    claim = receipt.get("payload", {}).get("claim", {})
+    return _billed(api_key, "attest_onchain",
+                   lambda: _eas.attest_credential(receipt.get("digest", ""), claim.get("kind", ""),
+                                                  claim.get("survives"), claim.get("verdict", ""),
+                                                  recipient=recipient))
 
 
 @mcp.tool(annotations=_ann("Verify ANY claim receipt (free, issuer-agnostic)"))

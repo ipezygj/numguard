@@ -395,3 +395,17 @@ def test_anchor_builds_calldata_and_refuses_bad_receipts(monkeypatch):
     assert dry["tag"] == "NGRCP1" and d in dry["calldata"]
     assert "error" in anchor.anchor_digest("short")
     assert "unavailable" in anchor.anchor_digest(d)["error"]        # no key -> safe error, no crash
+
+
+def test_eas_attestation_encoding_and_schema(monkeypatch):
+    """EAS credential: deterministic schema UID, ABI-encoded data (dry-run, no key), bad digest rejected,
+    fail-safe without a gas key."""
+    monkeypatch.delenv("NUMGUARD_GAS_KEY", raising=False)
+    from numguard import eas
+    uid = eas.schema_uid()
+    assert uid.startswith("0x") and len(uid) == 66                      # bytes32 hex
+    d = eas.attest_credential("ef" * 32, "backtest", True, "SR real", dry_run=True)
+    assert d["dry_run"] and d["schema_uid"] == uid and d["encoded_data"].startswith("0x")
+    assert len(bytes.fromhex(d["encoded_data"][2:])) % 32 == 0          # valid ABI encoding
+    assert "error" in eas.attest_credential("short", "k", True, "v")
+    assert "unavailable" in eas.attest_credential("ef" * 32, "k", True, "v")["error"]

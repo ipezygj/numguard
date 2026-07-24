@@ -33,6 +33,7 @@ PRICES = {
     "open_commitment": 1,         # open a live-tracked promise (O(1)/observation, constant memory)
     "report_returns": 2,          # fold new live returns into a commitment + current verdict
     "anchor_receipt": 25,         # anchor a receipt digest on-chain (covers gas) — a portable on-chain credential
+    "attest_onchain": 30,         # write a composable EAS attestation on Base (covers gas)
 }
 FREE_TIER_CALLS = 25          # per key, before any charge — let the agent feel the value first
 
