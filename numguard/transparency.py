@@ -73,13 +73,18 @@ def _turso_on() -> bool:
 def config_status() -> dict:
     """Safe diagnostic (no secret values): what the server actually resolved for the ledger backend.
     Lets an operator see whether the durable Turso config took effect without exposing the token."""
+    raw = os.environ.get("NUMGUARD_TURSO_URL", "") + " " + os.environ.get("NUMGUARD_TURSO_TOKEN", "")
     return {"backend": "turso" if _turso_on() else "file (ephemeral)",
             "durable": _turso_on(),
             "url_resolved": _http_base() if _TURSO_URL else "",
             "url_env_len": len(os.environ.get("NUMGUARD_TURSO_URL", "")),
             "token_env_len": len(os.environ.get("NUMGUARD_TURSO_TOKEN", "")),
             "url_extracted": bool(_TURSO_URL),
-            "token_extracted": bool(_TURSO_TOKEN)}
+            "token_extracted": bool(_TURSO_TOKEN),
+            # structural hints (no secret value) to diagnose why the JWT wasn't found:
+            "has_eyJ": "eyJ" in raw, "has_authtoken": "authtoken" in raw.lower(),
+            "has_pct": "%" in raw, "dots_in_raw": raw.count("."), "spaces_in_raw": raw.count(" ") - 1,
+            "raw_tail6": raw.rstrip()[-6:]}
 
 
 def _http_base() -> str:
