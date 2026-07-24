@@ -11,7 +11,7 @@ Addresses are the OP-Stack predeploys (identical on Base mainnet 8453 and Base S
 web3 + eth_abi + NUMGUARD_GAS_KEY; the attest tx shares the settlement gas-nonce lock so they never collide.
 """
 from __future__ import annotations
-import os
+import os, threading, time
 
 EAS_ADDRESS = "0x4200000000000000000000000000000000000021"
 SCHEMA_REGISTRY = "0x4200000000000000000000000000000000000020"
@@ -60,6 +60,15 @@ _REGISTRY_ABI = [
 ]
 
 _ZERO32 = b"\x00" * 32
+
+# free on-chain reads (check_attestation) hit an external RPC and are unmetered — cache immutable results and
+# globally rate-limit cache-MISSES so a spammer can't hammer the public RPC (which could rate-limit our IP and
+# break settlements/anchors).
+_READ_CACHE: dict = {}
+_READ_TTL = 60.0
+_READ_LOCK = threading.Lock()
+_READ_HITS: list = []
+_READ_RATE, _READ_WINDOW = 60, 60.0
 
 
 def available() -> bool:
@@ -161,6 +170,16 @@ def read_attestation(uid: str) -> dict:
     if not uid or len(uid.replace("0x", "")) != 64:
         return {"error": "uid must be a 32-byte hex"}
     network = os.environ.get("NUMGUARD_NETWORK", "base")
+    key = uid.lower()
+    with _READ_LOCK:                              # serve immutable reads from cache; rate-limit RPC misses
+        cached = _READ_CACHE.get(key)
+        if cached and (time.time() - cached[1]) < _READ_TTL:
+            return cached[0]
+        now = time.time()
+        _READ_HITS[:] = [t for t in _READ_HITS if now - t < _READ_WINDOW]
+        if len(_READ_HITS) >= _READ_RATE:
+            return {"error": "read rate limit reached, retry shortly"}
+        _READ_HITS.append(now)
     try:
         from web3 import Web3
         from eth_abi import decode as _decode
@@ -171,23 +190,30 @@ def read_attestation(uid: str) -> dict:
         a = eas.functions.getAttestation(bytes.fromhex(uid[2:] if uid.startswith("0x") else uid)).call()
         att_uid, schema, t, exp, revoked_at, ref, recipient, attester, revocable, data = a
         if att_uid == _ZERO32:
-            return {"found": False, "note": "no attestation with that uid"}
-        is_numguard = ("0x" + schema.hex()) == schema_uid()
-        cred = {}
-        if is_numguard and data:
-            try:
-                digest, kind, survives, verdict = _decode(SCHEMA_TYPES, data)
-                cred = {"digest": "0x" + digest.hex(), "kind": kind,
-                        "survives": bool(survives), "verdict": verdict}
-            except Exception:
-                cred = {}
-        return {"found": True, "is_numguard_credential": is_numguard, "revoked": revoked_at != 0,
-                "attester": attester, "recipient": recipient, "attested_at": t,
-                "credential": cred, "easscan": _EASSCAN.get(network, "") + (uid if uid.startswith("0x") else "0x" + uid),
-                "note": ("a genuine numguard verification credential" if is_numguard
-                         else "exists but NOT under numguard's schema — not a numguard credential")}
+            result = {"found": False, "note": "no attestation with that uid"}
+        else:
+            is_numguard = ("0x" + schema.hex()) == schema_uid()
+            cred = {}
+            if is_numguard and data:
+                try:
+                    digest, kind, survives, verdict = _decode(SCHEMA_TYPES, data)
+                    cred = {"digest": "0x" + digest.hex(), "kind": kind,
+                            "survives": bool(survives), "verdict": verdict}
+                except Exception:
+                    cred = {}
+            result = {"found": True, "is_numguard_credential": is_numguard, "revoked": revoked_at != 0,
+                      "attester": attester, "recipient": recipient, "attested_at": t, "credential": cred,
+                      "easscan": _EASSCAN.get(network, "") + (uid if uid.startswith("0x") else "0x" + uid),
+                      "note": ("a genuine numguard verification credential" if is_numguard
+                               else "exists but NOT under numguard's schema — not a numguard credential")}
     except Exception:
         return {"error": "read error"}
+    with _READ_LOCK:                             # cache the immutable read; bound the cache
+        _READ_CACHE[key] = (result, time.time())
+        if len(_READ_CACHE) > 5000:
+            for k in sorted(_READ_CACHE, key=lambda k: _READ_CACHE[k][1])[:2500]:
+                _READ_CACHE.pop(k, None)
+    return result
 
 
 def _selftest():

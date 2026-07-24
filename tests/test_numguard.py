@@ -453,3 +453,15 @@ def test_eas_read_attestation_validates_uid():
     assert "error" in eas.read_attestation("")
     # the schema UID is deterministic and used to recognise a genuine numguard credential
     assert eas.schema_uid().startswith("0x") and len(eas.schema_uid()) == 66
+
+
+def test_eas_read_cache_and_rate_limit():
+    """The free on-chain read tool must cache immutable results and rate-limit cache-misses so it can't hammer
+    the external RPC (which could throttle our IP and break settlements)."""
+    import time
+    from numguard import eas
+    eas._READ_CACHE.clear()
+    eas._READ_HITS[:] = [time.time()] * eas._READ_RATE          # saturate the global miss budget
+    assert "rate limit" in eas.read_attestation("0x" + "11" * 32)["error"]
+    eas._READ_CACHE["0x" + "22" * 32] = ({"found": True, "cached": True}, time.time())
+    assert eas.read_attestation("0x" + "22" * 32)["cached"] is True   # cache served despite the limiter
