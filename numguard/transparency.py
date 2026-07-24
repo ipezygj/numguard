@@ -71,7 +71,7 @@ def _turso_on() -> bool:
 
 
 def _http_base() -> str:
-    u = _TURSO_URL
+    u = _TURSO_URL.split("?")[0]                 # drop any ?authToken=… query — token goes in the Bearer header
     if u.startswith("libsql://"):
         u = "https://" + u[len("libsql://"):]
     return u.rstrip("/")
