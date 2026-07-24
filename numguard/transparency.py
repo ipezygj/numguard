@@ -48,8 +48,10 @@ def _entry_hash(prev: str, seq: int, ts: int, digest: str) -> str:
 # the local JSONL file (unchanged; what the tests exercise). Stdlib-only HTTP, no new dependency.
 import urllib.request as _urllib
 
-_TURSO_URL = os.environ.get("NUMGUARD_TURSO_URL", "").strip()
-_TURSO_TOKEN = os.environ.get("NUMGUARD_TURSO_TOKEN", "").strip()
+# Tolerate a messy dashboard paste: the URL is the first whitespace-delimited chunk (a real URL never
+# contains whitespace), and the token is stripped of ALL whitespace/newlines (a JWT never contains any).
+_TURSO_URL = (os.environ.get("NUMGUARD_TURSO_URL", "").split() or [""])[0]
+_TURSO_TOKEN = "".join(os.environ.get("NUMGUARD_TURSO_TOKEN", "").split())
 _DDL = ("CREATE TABLE IF NOT EXISTS numguard_ledger (seq INTEGER PRIMARY KEY, ts INTEGER, digest TEXT, kind TEXT, "
         "survives TEXT, public_key TEXT, prev TEXT, hash TEXT, receipt TEXT)")
 _COLS = ("seq", "ts", "digest", "kind", "survives", "public_key", "prev", "hash", "receipt")
