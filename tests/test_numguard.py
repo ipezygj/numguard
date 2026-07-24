@@ -508,3 +508,16 @@ def test_guard_reflex_gates_a_number():
     pos = [1.0 if a[t] > 0 else -1.0 for t in range(300)]
     with pytest.raises(NumberNotVerified):
         require_backtest(look_ahead, positions=pos, asset_returns=a)
+
+
+def test_proof_gallery_is_honest_and_verifiable():
+    """The dogfood gallery must (a) discriminate — some survive, some flag — and (b) every receipt must verify
+    against its own embedded key. Guards against a gallery that only ever rejects, or ships a bad receipt."""
+    import os, sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples"))
+    import proof_gallery
+    from numguard import receipt_spec as S
+    _pub, entries = proof_gallery.build()
+    assert any(e["survives"] for e in entries), "a credible gallery must let real signal through"
+    assert any(not e["survives"] for e in entries), "a credible gallery must flag the fakes"
+    assert all(S.verify_any(e["receipt"])["valid"] for e in entries), "every gallery receipt must verify"

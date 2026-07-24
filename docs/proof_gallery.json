@@ -1,0 +1,401 @@
+{
+  "spec": "vcr/1",
+  "issuer_public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+  "about": "numguard verifying real numbers. Every verdict is what the checker returns; every receipt verifies offline against issuer_public_key. Illustrative cases, honest results.",
+  "verify": "for any case: numguard.receipt_spec.verify_any(case['receipt']) -> {'valid': True, ...}",
+  "cases": [
+    {
+      "id": "overfit-sharpe",
+      "title": "A Sharpe of 0.12/period that was the best of 100 configs",
+      "claim": "\"Our strategy Sharpes well \u2014 0.12 per period over 250 periods.\"",
+      "note": "Canonical selection bias: at one hypothesis it looks fine, but it was the best of 100 tried. The Deflated Sharpe (Bailey & Lopez de Prado, 2014) discounts the search and it collapses.",
+      "kind": "backtest",
+      "inputs": {
+        "sr": 0.12,
+        "T": 250,
+        "n_trials": 100
+      },
+      "survives": false,
+      "verdict": "SR=0.120 over T=250, 100 trials tested; deflation bar=0.160; DSR=0.263 -> does NOT survive deflation (needs DSR>0.95). PSR-vs-0=0.970, minTRL=190 obs.",
+      "risk": null,
+      "flags": null,
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "backtest",
+            "survives": false,
+            "verdict": "SR=0.120 over T=250, 100 trials tested; deflation bar=0.160; DSR=0.263 -> does NOT survive deflation (needs DSR>0.95). PSR-vs-0=0.970, minTRL=190 obs."
+          },
+          "detail": {
+            "kind": "backtest",
+            "survives": false,
+            "sr": 0.12,
+            "dsr": 0.26279449338857097,
+            "deflation_bar": 0.16037044229582423,
+            "psr_vs_0": 0.9704055641229818,
+            "min_track_record": 190.23773339874325
+          },
+          "issued_at": 1784882935,
+          "nonce": "54aea506b702dcf3",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "f969c864b5065ea85af26bd5015cd56c6b24e4ab59f4a23284d8997521f50526",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "7ec850f8200e59afcf7135d46d100e60ad385fea75d93bd324662f2367f16cf605d0b2492959b40f56889ec55d2a078fabbbec367833aede9bf05742d7fd9c07"
+      }
+    },
+    {
+      "id": "real-edge",
+      "title": "A single hypothesis, long sample, Sharpe 0.15",
+      "claim": "\"One idea, pre-registered, tested once on 1000 periods: Sharpe 0.15.\"",
+      "note": "Nothing to deflate \u2014 one trial, a long track record. A genuine edge should, and does, survive.",
+      "kind": "backtest",
+      "inputs": {
+        "sr": 0.15,
+        "T": 1000,
+        "n_trials": 1
+      },
+      "survives": true,
+      "verdict": "SR=0.150 over T=1000, 1 trials tested; deflation bar=0.000; DSR=1.000 -> SURVIVES deflation (needs DSR>0.95). PSR-vs-0=1.000, minTRL=123 obs.",
+      "risk": null,
+      "flags": null,
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "backtest",
+            "survives": true,
+            "verdict": "SR=0.150 over T=1000, 1 trials tested; deflation bar=0.000; DSR=1.000 -> SURVIVES deflation (needs DSR>0.95). PSR-vs-0=1.000, minTRL=123 obs."
+          },
+          "detail": {
+            "kind": "backtest",
+            "survives": true,
+            "sr": 0.15,
+            "dsr": 0.9999987890623048,
+            "deflation_bar": 0.0,
+            "psr_vs_0": 0.9999987890623048,
+            "min_track_record": 122.59914719585645
+          },
+          "issued_at": 1784882935,
+          "nonce": "fd54aed2eb67b9ae",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "19ff2286afb78823f9a85ef1b49a9a44c0813280bec3c00e1dde3ee0526e9ac1",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "4ea5c92001c7973b72bdd9621035830615684bcf453cc551ff916f4d14d51f2e420620567b50f4af88747375fbe9e56c885af7ca736e6ef26743d207e116a50a"
+      }
+    },
+    {
+      "id": "real-model-gap",
+      "title": "Model A beats B by 5 points over 2000 items each",
+      "claim": "\"A is better: 85% vs 80% on 2000 held-out items.\"",
+      "note": "A 5-point gap at n=2000 sits above the minimum detectable effect \u2014 a real ranking, not noise.",
+      "kind": "model_gap",
+      "inputs": {
+        "n": 2000,
+        "p1": 0.85,
+        "p2": 0.8
+      },
+      "survives": true,
+      "verdict": "gap=+0.05 over n=2000; MDE at 80% power=0.0337; real difference.",
+      "risk": null,
+      "flags": null,
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "model_gap",
+            "survives": true,
+            "verdict": "gap=+0.05 over n=2000; MDE at 80% power=0.0337; real difference."
+          },
+          "detail": {
+            "kind": "model_gap",
+            "survives": true,
+            "gap": 0.04999999999999993,
+            "p_value": 3.1650773783882465e-05,
+            "mde": 0.0336627689330557
+          },
+          "issued_at": 1784882935,
+          "nonce": "6c565ede54e257b3",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "fd97c7385b4b398c2f32b5715360b2d9d5ce52017ce820555e69a4ebdbb5463c",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "c97836d29b400315712fbd747a909023b77f558d6f1b4a40fbc421fe888c62cb3ee731b26ae6d34ec3084d063a08955d62a317f5c19bc7b2a35b4e2fd9c72705"
+      }
+    },
+    {
+      "id": "noise-model-gap",
+      "title": "Model A beats B by 1 point over 200 items each",
+      "claim": "\"A wins: 85% vs 84% \u2014 ship A.\"",
+      "note": "A 1-point gap at n=200 is below the MDE: indistinguishable at that sample. Not a ranking.",
+      "kind": "model_gap",
+      "inputs": {
+        "n": 200,
+        "p1": 0.85,
+        "p2": 0.84
+      },
+      "survives": false,
+      "verdict": "gap=+0.01 over n=200; MDE at 80% power=0.101; below MDE \u2014 indistinguishable at n=200, not a ranking.",
+      "risk": null,
+      "flags": null,
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "model_gap",
+            "survives": false,
+            "verdict": "gap=+0.01 over n=200; MDE at 80% power=0.101; below MDE \u2014 indistinguishable at n=200, not a ranking."
+          },
+          "detail": {
+            "kind": "model_gap",
+            "survives": false,
+            "gap": 0.010000000000000009,
+            "p_value": 0.782305483660977,
+            "mde": 0.10139068121602314
+          },
+          "issued_at": 1784882935,
+          "nonce": "e5863ee47eb427fe",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "2d38664074fc7ede171a0ec9fa5df0d910423a4a43e06d258837a1fcdef70ecd",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "20aa52a678aba59b9ce15b029dfe4a4bf9ae1b9476cc4a34aeaff82030e87089f8dc48ae1bb467565e9df714906185ee41f00f1d0e0ae36bf55e5001b4c6ef02"
+      }
+    },
+    {
+      "id": "cherry-picked-subset",
+      "title": "\"We win on subset X, p=0.03\" \u2014 best of 20 subsets",
+      "claim": "\"Significant advantage on subset X (p=0.03).\"",
+      "note": "The p looks significant until you count the family: it was the best of 20 subsets. After multiple-testing correction it's within noise.",
+      "kind": "subset_win",
+      "inputs": {
+        "p": 0.03,
+        "n_tests": 20
+      },
+      "survives": false,
+      "verdict": "Best-of-20: raw p=0.03 -> sidak p=0.456; does NOT survive \u2014 within noise for the family tested.",
+      "risk": null,
+      "flags": null,
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "subset_win",
+            "survives": false,
+            "verdict": "Best-of-20: raw p=0.03 -> sidak p=0.456; does NOT survive \u2014 within noise for the family tested."
+          },
+          "detail": {
+            "kind": "subset_win",
+            "survives": false,
+            "raw_p": 0.03,
+            "corrected_p": 0.456205657073253,
+            "method": "sidak"
+          },
+          "issued_at": 1784882935,
+          "nonce": "ca88450dcfbbc076",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "e7ca53d6a14aa2fa66bcdc9e64c4fe597d9cb98bde849675c042a824644ec54f",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "498d92e3cb05ddc37aa46c96d44d415ce142918ace75a1c3bbff4b27caed8c610482a215748f079377f51c921048c7efe38d1196526909dfee0158ca0459e60b"
+      }
+    },
+    {
+      "id": "judge-prefers-ours",
+      "title": "An LLM judge prefers our answer 68/100",
+      "claim": "\"The judge picks ours 68% of the time \u2014 clearly better.\"",
+      "note": "68/100 is significantly above chance \u2014 but a judge preference this size often tracks length, position, or same-family style, not quality. Flagged as bias to investigate.",
+      "kind": "judge_bias",
+      "inputs": {
+        "wins": 68,
+        "n": 100
+      },
+      "survives": false,
+      "verdict": "68/100=68.0% (p=0.000409); significant bias \u2014 the winner may just be longer/first/same-family.",
+      "risk": null,
+      "flags": null,
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "judge_bias",
+            "survives": false,
+            "verdict": "68/100=68.0% (p=0.000409); significant bias \u2014 the winner may just be longer/first/same-family."
+          },
+          "detail": {
+            "kind": "judge_bias",
+            "survives": false,
+            "rate": 0.68,
+            "p_value": 0.00040877716742681534
+          },
+          "issued_at": 1784882935,
+          "nonce": "2134a278f7699337",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "4149a21be375ab7e53ec030a6d171b479ed3cb53e6f755389e4331933c17c721",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "1451a2b02aa412d8e0e5bb7c2d2c3971d8b8a35b49afcdf400bc73a7070e0cd10b789c5130ef6a20acbfea6a301f5ad2b82a262afe8034a0f9165f31e4ab0e0f"
+      }
+    },
+    {
+      "id": "judge-fair",
+      "title": "A judge splits 54/100",
+      "claim": "\"Ours wins 54% of head-to-heads.\"",
+      "note": "54/100 is indistinguishable from a coin flip \u2014 no evidence of bias, and no evidence of an edge.",
+      "kind": "judge_bias",
+      "inputs": {
+        "wins": 54,
+        "n": 100
+      },
+      "survives": true,
+      "verdict": "54/100=54.0% (p=0.484); no significant bias vs chance.",
+      "risk": null,
+      "flags": null,
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "judge_bias",
+            "survives": true,
+            "verdict": "54/100=54.0% (p=0.484); no significant bias vs chance."
+          },
+          "detail": {
+            "kind": "judge_bias",
+            "survives": true,
+            "rate": 0.54,
+            "p_value": 0.4841184136072915
+          },
+          "issued_at": 1784882935,
+          "nonce": "c417ca95922bf6c7",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "7bc3ee92e3ffabb743a8b31b71e1d2626930c3f3680031cb7acc7cba7788467b",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "51661ea7ecbceffd362a1829b448276c24319d7d644e9e27a3fc6498deb358937035928b2c8fbc382452aa31fb5bbf23d0aa8c11778db18b3d7cb69fbfa7830b"
+      }
+    },
+    {
+      "id": "look-ahead-fraud",
+      "title": "A backtest positioned on the same bar it trades",
+      "claim": "\"The full series backtests beautifully.\"",
+      "note": "The integrity battery reads the actual returns: positions are taken on the same bar's move \u2014 look-ahead leakage. A Sharpe built from time the strategy never had. Flagged CRITICAL.",
+      "kind": "backtest_series",
+      "inputs": {
+        "returns": "<750 periods>",
+        "positions": "<same-bar sign of asset return>",
+        "asset_returns": "<750 periods>"
+      },
+      "survives": false,
+      "verdict": "CRITICAL \u2014 flagged by 2 check(s): drawdown, leakage. Treat the headline Sharpe with suspicion.",
+      "risk": "critical",
+      "flags": [
+        "drawdown",
+        "leakage"
+      ],
+      "receipt": {
+        "payload": {
+          "issuer": "numguard",
+          "claim": {
+            "kind": "backtest_battery",
+            "survives": false,
+            "verdict": "CRITICAL \u2014 flagged by 2 check(s): drawdown, leakage. Treat the headline Sharpe with suspicion."
+          },
+          "detail": {
+            "kind": "backtest_battery",
+            "survives": false,
+            "risk": "critical",
+            "n_checks": 7,
+            "flags": [
+              "drawdown",
+              "leakage"
+            ],
+            "checks": {
+              "hac_sharpe": {
+                "sharpe": 1.3399,
+                "sharpe_hac": 1.2306,
+                "effective_sample_size": 632.6,
+                "lags": 6,
+                "t_hac": 33.701,
+                "p_value": 0.0,
+                "inflation": 1.089,
+                "flag": false
+              },
+              "regime_stability": {
+                "min_block_sharpe": 1.285,
+                "block_sharpes": [
+                  1.29,
+                  1.39,
+                  1.35,
+                  1.3,
+                  1.38,
+                  1.37
+                ],
+                "negative_block_fraction": 0.0,
+                "cusum_stat": 0.956,
+                "cusum_boundary": 1.944,
+                "break_index": null,
+                "half1_sharpe": 1.341,
+                "half2_sharpe": 1.341,
+                "flag": false
+              },
+              "drawdown": {
+                "max_drawdown": 0.0,
+                "calmar": Infinity,
+                "cvar_5pct": -0.00026,
+                "starr": Infinity,
+                "expected_max_dd": 0.0254,
+                "dd_ratio": 0.0,
+                "flag": true
+              },
+              "bootstrap_stability": {
+                "sharpe_ci95": [
+                  1.278,
+                  1.414
+                ],
+                "p_sharpe_le_0": 0.0,
+                "block": 9,
+                "flag": false
+              },
+              "permutation": {
+                "observed_abs_autocorr1": 0.026,
+                "perm_p_value": 0.4705,
+                "flag": false
+              },
+              "conditional_hetero": {
+                "ljung_box_q_squared": 4.96,
+                "lags": 10,
+                "p_value": 0.8939,
+                "flag": false
+              },
+              "leakage": {
+                "leakage_score": 63.599,
+                "sharpe_contemporaneous": 1.34,
+                "sharpe_lagged": 0.021,
+                "corr_same_bar": 0.801,
+                "corr_next_bar": 0.02,
+                "z_next": 0.55,
+                "flag": true
+              }
+            }
+          },
+          "issued_at": 1784882936,
+          "nonce": "1b5266afe59e278d",
+          "alg": "ed25519",
+          "public_verifiable": true
+        },
+        "digest": "226c3ef9a01a551488eca1fb621692ccce25ce0608dc57c7e89b57bee1664aef",
+        "public_key": "ade9af6896d37ace4b7cb8dc10e31c99a937a7b69773da757db9893f9503180b",
+        "signature": "d4c5611697f20b4d6de8c68e3d64451f5a5f1a289a505b529f8afdec8b9858c085e905ce8eb0372742f45c7d2216b7849f6dac2a11c26dfca65a7f55d5692c05"
+      }
+    }
+  ]
+}
