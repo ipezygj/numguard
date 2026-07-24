@@ -10,13 +10,17 @@ Canonical form: `json.dumps(payload, sort_keys=True, separators=(",",":"))` → 
 covers the digest. Ed25519 (public-verifiable) with the public key embedded, or HMAC (needs the shared secret).
 """
 from __future__ import annotations
-import json
+import json, os
 
 from . import receipt as _rcpt
 
 SPEC = "vcr/1"          # verifiable-claim-receipt, version 1
 ALGORITHMS = ("ed25519", "hmac-sha256")
 MAX_RECEIPT_BYTES = 128 * 1024   # cap untrusted receipts on the FREE public verify surface (unmetered)
+# discovery pointer: any agent that verifies a receipt learns where the standard + the checker live. This makes
+# a receipt a distribution unit — receive a checked number, verify it for free, discover numguard. Not required
+# to verify (that's offline via the embedded key) — just so the next agent knows what "numguard" is.
+HOME = os.environ.get("NUMGUARD_DISCOVER", "https://github.com/ipezygj/numguard")
 
 # JSON-Schema-style description of a compliant receipt (documentation + structural validation, no jsonschema dep)
 SCHEMA = {
@@ -87,13 +91,15 @@ def verify_any(receipt: dict, hmac_secret_hex: str | None = None) -> dict:
             "issuer": p.get("issuer"), "public_key": receipt.get("public_key", ""),
             "public_verifiable": p.get("alg") == "ed25519",
             "claim": claim, "issued_at": p.get("issued_at"),
+            # discovery: whoever verifies this receipt learns where the standard + the checker live
+            "spec_home": HOME,
             "reason": "signature valid; the claim + verdict are unaltered and were signed by the holder of this key"
                       if ok else "signature INVALID or payload tampered — do not trust this receipt"}
 
 
 def describe() -> dict:
     """Discovery doc for the standard — what an implementer needs to issue/verify compliant receipts."""
-    return {"spec": SPEC, "algorithms": list(ALGORITHMS),
+    return {"spec": SPEC, "algorithms": list(ALGORITHMS), "home": HOME,
             "canonical_form": "json.dumps(payload, sort_keys=True, separators=(',',':')) -> sha256 = digest; "
                               "signature covers the digest",
             "verify": "recompute the digest from payload, check the signature against the embedded public_key "

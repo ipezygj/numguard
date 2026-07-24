@@ -328,6 +328,7 @@ def test_receipt_spec_verifies_any_issuer_free():
     assert S.validate(rc)["ok"] is True
     v = S.verify_any(rc)
     assert v["valid"] is True and v["spec"] == "vcr/1" and v["public_key"] == pub
+    assert v["spec_home"]                                   # discovery pointer: verifying a receipt reveals numguard
     rc["payload"]["claim"]["survives"] = False              # tamper
     assert S.verify_any(rc)["valid"] is False
     # a structurally broken receipt fails validation, not with a crash
