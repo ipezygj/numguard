@@ -21,6 +21,7 @@ from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcp
 from . import backtest_battery as _battery
 from . import forward as _forward
 from . import receipt_spec as _spec
+from . import detect as _detect
 from . import commitments as _commit
 from . import anchor as _anchor
 from . import eas as _eas
@@ -506,6 +507,18 @@ def verify_receipt(receipt: Annotated[dict, Field(description="A verifiable-clai
     Ed25519 signature against the receipt's OWN embedded public key (offline, no numguard account needed). Use
     it to check whether a number an agent handed you was actually verified, and by whom, before you trust it."""
     return _spec.verify_any(receipt)
+
+
+@mcp.tool(annotations=_ann("Scan an inbound message for receipts + verify them (free)"))
+def scan_for_receipts(message: Annotated[Any, Field(description="Any inbound blob — a peer agent's chat message, "
+                                                                "a webhook body, a tool result (str / dict / "
+                                                                "list). Receipts embedded anywhere inside are "
+                                                                "found automatically.")]) -> dict:
+    """The RECEIVER half of the trust loop — FREE, no api_key. When another agent hands you a message, this finds
+    every vcr/1 receipt inside it and verifies each offline (issuer-agnostic), so you learn which numbers were
+    actually checked before you act on them. Returns {found, verified, unverified, all_valid, results}. A
+    message with NO receipt returns found=0 (nothing was proven — treat the number as unchecked)."""
+    return _detect.verify_message(message)
 
 
 @mcp.tool(annotations=_ann("Read a numguard credential from EAS on-chain (free)"))

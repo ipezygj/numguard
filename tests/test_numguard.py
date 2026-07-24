@@ -510,6 +510,25 @@ def test_guard_reflex_gates_a_number():
         require_backtest(look_ahead, positions=pos, asset_returns=a)
 
 
+def test_detect_finds_and_verifies_embedded_receipts():
+    """The receiver half of the loop: a peer's message with an embedded receipt is found + verified; a tampered
+    one is caught; a bare claim proves nothing."""
+    import json
+    from numguard import receipt as R, detect
+    priv, pub = R.keypair()
+    rc = R.issue_receipt({"kind": "backtest", "survives": True, "verdict": "SR real"}, priv, pub)
+    msg = f"my strategy Sharpes 0.15, proof: {json.dumps(rc)} — thoughts?"
+    summary = detect.verify_message(msg)
+    assert summary["found"] == 1 and summary["all_valid"] is True
+    hit = detect.scan(msg)[0]
+    assert hit["valid"] is True and hit["spec_home"]        # verified + points the receiver back to numguard
+    # tamper the embedded receipt -> caught
+    rc["payload"]["claim"]["survives"] = False
+    assert detect.verify_message(f"result {json.dumps(rc)}")["all_valid"] is False
+    # a bare claim carries no receipt -> nothing proven
+    assert detect.verify_message("just trust me, Sharpe 2.1")["found"] == 0
+
+
 def test_proof_gallery_is_honest_and_verifiable():
     """The dogfood gallery must (a) discriminate — some survive, some flag — and (b) every receipt must verify
     against its own embedded key. Guards against a gallery that only ever rejects, or ships a bad receipt."""
