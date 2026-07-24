@@ -23,8 +23,13 @@ Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval s
 | `verify_judge_bias` | *Is my judge's preference real, or just longer / first / same-family?* |
 | `calibrate_judge` | *Is the LLM judge I trust actually calibrated against ground truth?* |
 | `audit_leaderboard` | *Is #1 on this leaderboard statistically real?* (rank confidence intervals) |
-| `issue_receipt` | *Give me a signed token proving this number was checked.* |
-| `pricing` / `balance` | machine-readable price list + credit balance |
+| **`reconcile_backtest`** | *Did my backtest's claimed Sharpe survive contact with LIVE returns?* (HELD / DECAYED / BROKEN) |
+| **`open_commitment` / `report_returns`** | *Hold my strategy accountable over time — stream live returns, tell me when the edge breaks.* (O(1)/obs) |
+| `issue_receipt` / `commitment_receipt` | *Give me a signed, portable proof this number / track record was checked.* |
+| **`verify_receipt`** | *Was the number this other agent handed me actually checked, and by whom?* (**free, issuer-agnostic**) |
+| `receipt_spec` / `why` / `pricing` / `balance` | the open receipt standard · what numguard does that nothing else does · prices · balance |
+
+**What sets it apart** (`why`): computing the number yourself, or a lesser checker, stops at "is it significant?" numguard also **holds it accountable to live reality over time**, **signs a portable tamper-evident proof**, and lets **anyone verify any proof for free** — the trust layer, not just a calculator.
 
 ## For agent traders: the Deflated Sharpe Ratio
 
