@@ -70,6 +70,18 @@ def _turso_on() -> bool:
     return bool(_TURSO_URL and _TURSO_TOKEN)
 
 
+def config_status() -> dict:
+    """Safe diagnostic (no secret values): what the server actually resolved for the ledger backend.
+    Lets an operator see whether the durable Turso config took effect without exposing the token."""
+    return {"backend": "turso" if _turso_on() else "file (ephemeral)",
+            "durable": _turso_on(),
+            "url_resolved": _http_base() if _TURSO_URL else "",
+            "url_env_len": len(os.environ.get("NUMGUARD_TURSO_URL", "")),
+            "token_env_len": len(os.environ.get("NUMGUARD_TURSO_TOKEN", "")),
+            "url_extracted": bool(_TURSO_URL),
+            "token_extracted": bool(_TURSO_TOKEN)}
+
+
 def _http_base() -> str:
     u = _TURSO_URL.split("?")[0]                 # drop any ?authToken=… query — token goes in the Bearer header
     if u.startswith("libsql://"):
