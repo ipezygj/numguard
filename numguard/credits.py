@@ -32,8 +32,24 @@ PRICES = {
     "reconcile_backtest": 4,      # accountability: did a claimed backtest Sharpe survive LIVE returns?
     "open_commitment": 1,         # open a live-tracked promise (O(1)/observation, constant memory)
     "report_returns": 2,          # fold new live returns into a commitment + current verdict
-    "anchor_receipt": 25,         # anchor a receipt digest on-chain (covers gas) — a portable on-chain credential
-    "attest_onchain": 30,         # write a composable EAS attestation on Base (covers gas)
+    "anchor_receipt": 50,         # PREMIUM (Tier 2): anchor a receipt digest on-chain — a permanent, timestamped credential (gas + value of permanence)
+    "attest_onchain": 100,        # PREMIUM (Tier 2): a composable EAS attestation on Base — queryable on-chain reputation any protocol can read
+}
+
+# Pricing ladder (value & payer, not compute). Free maximizes receipt SUPPLY; capture moves UP.
+#   tier 0 FREE      — verify_receipt / scan_for_receipts / receipt_spec / why + 25 free calls  (payer: none; network effect)
+#   tier 1 PER-CHECK — the statistical checks above, $0.02–0.05                                  (payer: agents at volume; x402 wedge)
+#   tier 2 PREMIUM   — anchor_receipt / attest_onchain: a PERMANENT on-chain "premium receipt"   (payer: operators/funds; near-term real money)
+#   tier 3 TRACK     — open_commitment + report_returns: an accountable record over time          (payer: operator building reputation; subscription-shaped)
+# A "premium receipt" = a standard signed (vcr/1) receipt that is ALSO anchored + EAS-attested on Base:
+# off-chain proof anyone verifies free, PLUS an on-chain credential that is permanent and composable.
+TIERS = {
+    "free":      ["verify_receipt", "scan_for_receipts", "receipt_spec", "why"],
+    "per_check": ["verify_backtest", "verify_subset_win", "verify_model_gap", "verify_judge_bias",
+                  "calibrate_judge", "audit_leaderboard", "verify_backtest_series", "reconcile_backtest",
+                  "verify_guard_trace", "issue_receipt"],
+    "premium_onchain": ["anchor_receipt", "attest_onchain"],
+    "track_record": ["open_commitment", "report_returns"],
 }
 FREE_TIER_CALLS = 25          # per key, before any charge — let the agent feel the value first
 
