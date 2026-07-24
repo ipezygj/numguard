@@ -43,6 +43,10 @@ def anchor_digest(digest_hex: str, *, dry_run: bool = False) -> dict:
     key = os.environ.get("NUMGUARD_GAS_KEY", "")
     if not key:
         return {"error": "on-chain anchoring is unavailable (no gas key configured)"}
+    from . import onchain_log as _log
+    cached = _log.get(digest_hex, "anchor")       # idempotent: don't re-anchor + re-spend gas on a repeat
+    if cached:
+        return {**cached, "deduped": True}
     try:
         from web3 import Web3
         from eth_account import Account
@@ -65,10 +69,12 @@ def anchor_digest(digest_hex: str, *, dry_run: bool = False) -> dict:
         if rcpt.get("status") != 1:
             return {"error": "anchor tx failed"}
         h = txh.hex() if not str(txh).startswith("0x") else txh.hex()
-        return {"anchored": True, "network": network, "tx": h if str(h).startswith("0x") else "0x" + h,
-                "block": rcpt.get("blockNumber"), "digest": digest_hex,
-                "explorer": _EXPLORER.get(network, "") + (h if str(h).startswith("0x") else "0x" + h),
-                "note": "immutable, timestamped on-chain proof that this receipt existed; a portable credential."}
+        h = h if str(h).startswith("0x") else "0x" + h
+        result = {"anchored": True, "network": network, "tx": h, "block": rcpt.get("blockNumber"),
+                  "digest": digest_hex, "explorer": _EXPLORER.get(network, "") + h,
+                  "note": "immutable, timestamped on-chain proof that this receipt existed; a portable credential."}
+        _log.put(digest_hex, "anchor", result)    # remember it so a repeat is idempotent (no second tx)
+        return result
     except Exception:
         return {"error": "anchor error"}      # opaque: never leak the RPC / internals
 

@@ -107,6 +107,10 @@ def attest_credential(digest_hex: str, kind: str, survives, verdict: str, *,
     key = os.environ.get("NUMGUARD_GAS_KEY", "")
     if not key:
         return {"error": "on-chain attestation is unavailable (no gas key configured)"}
+    from . import onchain_log as _log
+    cached = _log.get(digest_hex, "eas")          # idempotent: don't re-attest + re-spend gas on a repeat
+    if cached:
+        return {**cached, "deduped": True}
     try:
         from web3 import Web3
         from eth_account import Account
@@ -154,11 +158,13 @@ def attest_credential(digest_hex: str, kind: str, survives, verdict: str, *,
             att_uid = ""
         att_uid = ("0x" + att_uid) if att_uid and not att_uid.startswith("0x") else att_uid
         txhex = txh.hex() if str(txh.hex()).startswith("0x") else "0x" + txh.hex()
-        return {"attested": True, "network": network, "attestation_uid": att_uid, "schema_uid": uid,
-                "recipient": rcpt_addr, "tx": txhex, "block": rec.get("blockNumber"),
-                "easscan": (_EASSCAN.get(network, "") + att_uid) if att_uid else "",
-                "note": "a composable on-chain credential — any protocol can look up this attestation by the "
-                        "recipient address and read the numguard verdict."}
+        result = {"attested": True, "network": network, "attestation_uid": att_uid, "schema_uid": uid,
+                  "recipient": rcpt_addr, "tx": txhex, "block": rec.get("blockNumber"),
+                  "easscan": (_EASSCAN.get(network, "") + att_uid) if att_uid else "",
+                  "note": "a composable on-chain credential — any protocol can look up this attestation by the "
+                          "recipient address and read the numguard verdict."}
+        _log.put(digest_hex, "eas", result)       # remember it so a repeat is idempotent (no second tx)
+        return result
     except Exception:
         return {"error": "attestation error"}
 

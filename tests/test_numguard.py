@@ -465,3 +465,22 @@ def test_eas_read_cache_and_rate_limit():
     assert "rate limit" in eas.read_attestation("0x" + "11" * 32)["error"]
     eas._READ_CACHE["0x" + "22" * 32] = ({"found": True, "cached": True}, time.time())
     assert eas.read_attestation("0x" + "22" * 32)["cached"] is True   # cache served despite the limiter
+
+
+def test_onchain_writes_are_idempotent(tmp_path, monkeypatch):
+    """Anchoring / attesting the same digest twice must NOT send a second Base tx (wasted gas + duplicate on-
+    chain record) — the second call returns the first result, deduped."""
+    from pathlib import Path
+    from numguard import onchain_log, anchor, eas
+    monkeypatch.setattr(onchain_log, "_STORE", Path(tmp_path) / "o.db")
+    onchain_log._INIT.clear()
+    monkeypatch.setenv("NUMGUARD_GAS_KEY", "0x" + "11" * 32)   # pass the key gate so we reach the dedup check
+    d = "ab" * 32
+    onchain_log.put(d, "anchor", {"anchored": True, "tx": "0xDEAD"})
+    onchain_log.put(d, "eas", {"attested": True, "attestation_uid": "0xBEEF"})
+    a = anchor.anchor_digest(d)
+    e = eas.attest_credential(d, "backtest", True, "ok")
+    assert a["tx"] == "0xDEAD" and a["deduped"] is True
+    assert e["attestation_uid"] == "0xBEEF" and e["deduped"] is True
+    assert onchain_log.get(d, "anchor")["tx"] == "0xDEAD"      # case-insensitive, kind-scoped index
+    assert onchain_log.get(d, "missing") is None
