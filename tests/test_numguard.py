@@ -529,6 +529,21 @@ def test_detect_finds_and_verifies_embedded_receipts():
     assert detect.verify_message("just trust me, Sharpe 2.1")["found"] == 0
 
 
+def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
+    """The sender half: announce() embeds a verifiable receipt for a real edge (a receiver verifies it),
+    refuses to stamp an overfit number 'verified', but can post an honest flagged receipt."""
+    import pytest
+    from numguard import emit, detect, receipt as R
+    priv, pub = R.keypair()
+    post = emit.announce("backtest", priv, pub, "carry book, 1000 sessions", sr=0.15, T=1000, n_trials=1)
+    assert detect.verify_message(post)["all_valid"] is True          # sender -> receiver round-trip
+    with pytest.raises(emit.NotVerified):
+        emit.announce("backtest", priv, pub, "best of 100", sr=0.12, T=250, n_trials=100)
+    flagged = emit.announce("backtest", priv, pub, "honest", require_survive=False,
+                            sr=0.12, T=250, n_trials=100)
+    assert detect.scan(flagged)[0]["claim"]["survives"] is False
+
+
 def test_proof_gallery_is_honest_and_verifiable():
     """The dogfood gallery must (a) discriminate — some survive, some flag — and (b) every receipt must verify
     against its own embedded key. Guards against a gallery that only ever rejects, or ships a bad receipt."""
