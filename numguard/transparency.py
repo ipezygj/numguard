@@ -50,7 +50,7 @@ import urllib.request as _urllib
 
 _TURSO_URL = os.environ.get("NUMGUARD_TURSO_URL", "").strip()
 _TURSO_TOKEN = os.environ.get("NUMGUARD_TURSO_TOKEN", "").strip()
-_DDL = ("CREATE TABLE IF NOT EXISTS ledger (seq INTEGER PRIMARY KEY, ts INTEGER, digest TEXT, kind TEXT, "
+_DDL = ("CREATE TABLE IF NOT EXISTS numguard_ledger (seq INTEGER PRIMARY KEY, ts INTEGER, digest TEXT, kind TEXT, "
         "survives TEXT, public_key TEXT, prev TEXT, hash TEXT, receipt TEXT)")
 _COLS = ("seq", "ts", "digest", "kind", "survives", "public_key", "prev", "hash", "receipt")
 _table_ready = [False]
@@ -111,7 +111,7 @@ def _row_to_entry(row: dict) -> dict:
 
 def _iter_lines():
     if _turso_on():
-        rows, _ = _turso("SELECT seq,ts,digest,kind,survives,public_key,prev,hash,receipt FROM ledger ORDER BY seq ASC")
+        rows, _ = _turso("SELECT seq,ts,digest,kind,survives,public_key,prev,hash,receipt FROM numguard_ledger ORDER BY seq ASC")
         for row in rows:
             yield _row_to_entry(row)
         return
@@ -126,7 +126,7 @@ def _iter_lines():
 
 def _last() -> dict | None:
     if _turso_on():
-        rows, _ = _turso("SELECT seq,ts,digest,kind,survives,public_key,prev,hash,receipt FROM ledger "
+        rows, _ = _turso("SELECT seq,ts,digest,kind,survives,public_key,prev,hash,receipt FROM numguard_ledger "
                          "ORDER BY seq DESC LIMIT 1")
         return _row_to_entry(rows[0]) if rows else None
     last = None
@@ -160,7 +160,7 @@ def publish(receipt: dict, ts: int | None = None) -> dict:
         }
         if _turso_on():
             sv = "true" if survives is True else "false" if survives is False else None
-            _turso("INSERT INTO ledger (seq,ts,digest,kind,survives,public_key,prev,hash,receipt) "
+            _turso("INSERT INTO numguard_ledger (seq,ts,digest,kind,survives,public_key,prev,hash,receipt) "
                    "VALUES (?,?,?,?,?,?,?,?,?)",
                    (seq, ts, digest, kind, sv, entry["public_key"], prev_hash, h,
                     json.dumps(receipt, separators=(",", ":"))))
