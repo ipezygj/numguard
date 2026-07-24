@@ -29,6 +29,7 @@ PRICES = {
     "issue_receipt": 1,       # cheap add-on; the receipt is the sticky part
     "verify_guard_trace": 3,  # recompute an agent action-trace's behavioural-guard verdict + sign it
     "verify_backtest_series": 5,  # full integrity battery on the returns series (leakage/HAC/PBO/DD/…)
+    "reconcile_backtest": 4,      # accountability: did a claimed backtest Sharpe survive LIVE returns?
 }
 FREE_TIER_CALLS = 25          # per key, before any charge — let the agent feel the value first
 

@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from ._evalstats import correct_best_of, power_check, bias_rate
 from .backtest import deflated_sharpe
-from . import backtest_battery as _battery, _limits
+from . import backtest_battery as _battery, forward as _forward, _limits
 
-KINDS = ("subset_win", "model_gap", "judge_bias", "backtest", "backtest_series")
+KINDS = ("subset_win", "model_gap", "judge_bias", "backtest", "backtest_series", "forward_check")
 
 
 def verify_claim(kind: str, **p) -> dict:
@@ -60,6 +60,12 @@ def verify_claim(kind: str, **p) -> dict:
         return _battery.run_battery(p["returns"], positions=p.get("positions"),
                                     asset_returns=p.get("asset_returns"), turnover=p.get("turnover"),
                                     candidates=p.get("candidates"), periods_per_year=p.get("periods_per_year", 252))
+    if kind == "forward_check":
+        # accountability: did a claimed backtest Sharpe survive contact with LIVE returns? receipt-able.
+        _limits.check_list("realized_returns", p.get("realized_returns"))
+        return _forward.reconcile(p["claimed_sr"], p["realized_returns"],
+                                  periods_per_year=p.get("periods_per_year", 252),
+                                  alpha=p.get("alpha", 0.05))
     raise ValueError(f"unknown claim kind '{kind}'; use one of {KINDS}")
 
 

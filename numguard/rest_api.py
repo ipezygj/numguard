@@ -56,6 +56,8 @@ def _guard_body(tool: str, body: dict) -> None:
         for nm in ("positions", "asset_returns", "turnover"):
             if body.get(nm) is not None:
                 _limits.check_list(nm, body.get(nm))
+    if tool == "reconcile_backtest":
+        _limits.check_list("realized_returns", body.get("realized_returns"))
 
 try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
@@ -98,6 +100,10 @@ ROUTES = {
     "verify_backtest_series": (0.05, lambda b: _battery.run_battery(
         b["returns"], positions=b.get("positions"), asset_returns=b.get("asset_returns"),
         turnover=b.get("turnover"), candidates=b.get("candidates"),
+        periods_per_year=int(b.get("periods_per_year", 252)))),
+    # accountability oracle: did a claimed backtest Sharpe survive contact with LIVE returns?
+    "reconcile_backtest": (0.04, lambda b: claims.verify_claim(
+        "forward_check", claimed_sr=b["claimed_sr"], realized_returns=b["realized_returns"],
         periods_per_year=int(b.get("periods_per_year", 252)))),
 }
 

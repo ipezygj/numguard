@@ -297,3 +297,23 @@ def test_backtest_series_is_receiptable(tmp_path, monkeypatch):
     fn = getattr(issue_receipt, "fn", issue_receipt)
     r = fn("rk", "backtest_series", {"returns": la, "positions": pos, "asset_returns": a})
     assert r["payload"]["claim"]["survives"] is False and receipt.verify_receipt(r) is True
+
+
+def test_forward_reconcile_holds_and_breaks(tmp_path, monkeypatch):
+    """The accountability oracle: a kept promise HELDs; a dead edge over enough live data BREAKs; and it's
+    receipt-able as kind 'forward_check'."""
+    import random
+    from pathlib import Path
+    from numguard import credits, receipt, claims, forward
+    monkeypatch.setattr(credits, "_STORE", Path(tmp_path) / "l.json")
+    rng = random.Random(21)
+    claimed = 0.2
+    held = forward.reconcile(claimed, [rng.gauss(claimed * 0.01, 0.01) for _ in range(500)])
+    broke = forward.reconcile(claimed, [rng.gauss(0.0, 0.012) for _ in range(750)])
+    assert held["survives"] is True and held["verdict_label"] == "HELD"
+    assert broke["verdict_label"] == "BROKEN" and broke["survives"] is False and broke["edge_survived_pct"] < 40
+    # receipt-able
+    from numguard.mcp_server import issue_receipt
+    fn = getattr(issue_receipt, "fn", issue_receipt)
+    r = fn("k", "forward_check", {"claimed_sr": claimed, "realized_returns": [rng.gauss(0.0, 0.012) for _ in range(750)]})
+    assert r["payload"]["claim"]["kind"] == "forward_check" and receipt.verify_receipt(r) is True

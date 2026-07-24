@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt, _limits
 from . import backtest_battery as _battery
+from . import forward as _forward
 
 
 class _Out(BaseModel):
@@ -93,6 +94,18 @@ class Pricing(_Out):
     free_tier_calls: Optional[Any] = None
     prices: Optional[Any] = None
     x402: Optional[Any] = None
+
+
+class ForwardVerdict(_Out):
+    survives: Annotated[Optional[Any], Field(description="True if the claimed edge HELD in live returns.")] = None
+    verdict_label: Annotated[Optional[Any], Field(description="HELD / DECAYED / BROKEN.")] = None
+    claimed_sharpe: Optional[Any] = None
+    realized_sharpe: Optional[Any] = None
+    live_periods: Optional[Any] = None
+    p_below: Annotated[Optional[Any], Field(description="One-sided p that realized is this far below the claim "
+                                                        "by chance (small = the backtest overstated).")] = None
+    edge_survived_pct: Annotated[Optional[Any], Field(description="% of the claimed edge realized live.")] = None
+    verdict: Optional[Any] = None
 
 
 class BatteryVerdict(_Out):
@@ -260,8 +273,8 @@ def audit_leaderboard(
 def issue_receipt(
     api_key: ApiKey,
     kind: Annotated[str, Field(description="Claim type to verify + attest: 'backtest', 'backtest_series' "
-                                           "(full integrity battery), 'subset_win', 'model_gap', or "
-                                           "'judge_bias'.")],
+                                           "(full integrity battery), 'forward_check' (claim vs live returns), "
+                                           "'subset_win', 'model_gap', or 'judge_bias'.")],
     inputs: Annotated[dict, Field(description="Inputs for that claim — the same params as the matching "
                                              "verify_* tool, e.g. {'sr':0.12,'T':250,'n_trials':100} for backtest.")],
 ) -> Receipt:
@@ -345,6 +358,24 @@ def verify_backtest_series(
                    lambda: _battery.run_battery(returns, positions=positions, asset_returns=asset_returns,
                                                 turnover=turnover, candidates=candidates,
                                                 periods_per_year=periods_per_year))
+
+
+@mcp.tool(annotations=_ann("Reconcile a claimed backtest against LIVE returns"))
+def reconcile_backtest(
+    api_key: ApiKey,
+    claimed_sr: Annotated[float, Field(description="The per-period Sharpe the backtest CLAIMED.")],
+    realized_returns: Annotated[list, Field(description="The strategy's actual LIVE per-period returns since "
+                                                       "the claim.")],
+    periods_per_year: Annotated[int, Field(description="Periods per year for annualization (252 daily).")] = 252,
+) -> ForwardVerdict:
+    """The accountability oracle: did a backtest's claimed Sharpe survive contact with LIVE returns? Feed the
+    claimed per-period Sharpe and the realized live returns; numguard tests whether the realized Sharpe is
+    consistent with the claim (Mertens/Lo SE) and returns HELD / DECAYED / BROKEN + how much of the edge
+    survived. Turns a backtest receipt into an accountable track record — the number made a promise; this is
+    whether reality kept it. Receipt-able (kind 'forward_check')."""
+    _limits.check_list("realized_returns", realized_returns)
+    return _billed(api_key, "reconcile_backtest",
+                   lambda: _forward.reconcile(claimed_sr, realized_returns, periods_per_year=periods_per_year))
 
 
 @mcp.tool(annotations=_ann("Check your free calls + credit balance"))
