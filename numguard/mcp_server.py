@@ -166,6 +166,14 @@ _INSTRUCTIONS = (
     "(commitment_receipt). This is the accountability no other tool gives you: it catches the backtest that was "
     "optimistic AFTER the money is on.\n"
     "• Attach issue_receipt to numbers you publish so the next agent can trust them without re-deriving.\n\n"
+    "TRUST LEVELS — know what each result actually proves:\n"
+    "• STRONG (proof-of-check): verify_backtest / verify_backtest_series / verify_model_gap / verify_subset_win "
+    "/ verify_judge_bias / calibrate_judge / audit_leaderboard — numguard COMPUTES the check from your inputs; "
+    "the receipt proves the number was checked, with no trust in anyone's honesty.\n"
+    "• WEAKER (self-reported): reconcile_backtest and the commitment / track-record tools judge the returns YOU "
+    "REPORT — a consistency check against your own claim, NOT proof of real-world performance (they carry "
+    "data_source=self_reported). Treat a track record as 'consistent with what they reported', not 'this "
+    "strategy truly delivered'.\n\n"
     "Free tier is generous; then it meters itself (prepaid credits or x402 USDC). Verifying others' receipts is "
     "always free — that's the point: make 'was this checked?' universal."
 )
@@ -537,6 +545,15 @@ def why() -> dict:
         ],
         "reflex": "verify before you assert; verify a receipt before you trust; commit a strategy before you run it.",
         "spec": "receipts follow the open vcr/1 standard — call receipt_spec.",
+        "trust_levels": {
+            "strong_proof_of_check": ["verify_backtest", "verify_backtest_series", "verify_model_gap",
+                                      "verify_subset_win", "verify_judge_bias", "calibrate_judge",
+                                      "audit_leaderboard"],
+            "weaker_self_reported": ["reconcile_backtest", "open_commitment", "report_returns",
+                                     "commitment_receipt"],
+            "note": "proof-of-check needs no trust in anyone; self-reported track records judge the returns the "
+                    "agent reports (data_source=self_reported) — consistency, not proof of real performance.",
+        },
     }
 
 
