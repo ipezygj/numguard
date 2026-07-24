@@ -432,3 +432,14 @@ def test_accountability_discloses_self_reported(tmp_path, monkeypatch):
     priv, pub = receipt.keypair()
     rc = commitments.signed_track_record(cid, priv, pub, owner=owner)
     assert rc["payload"]["detail"]["data_source"] == "self_reported"
+
+
+def test_verify_receipt_rejects_oversized():
+    """The FREE public verify surface must reject an oversized receipt before doing crypto work (unmetered DoS)."""
+    from numguard import receipt as R, receipt_spec as S
+    priv, pub = R.keypair()
+    rc = R.issue_receipt({"kind": "backtest", "survives": True, "verdict": "ok"}, priv, pub)
+    assert S.verify_any(rc)["valid"] is True
+    rc["payload"]["detail"] = {"blob": "x" * (200 * 1024)}
+    out = S.verify_any(rc)
+    assert out["valid"] is False and "exceeds" in out["reason"]

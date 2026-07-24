@@ -10,11 +10,13 @@ Canonical form: `json.dumps(payload, sort_keys=True, separators=(",",":"))` → 
 covers the digest. Ed25519 (public-verifiable) with the public key embedded, or HMAC (needs the shared secret).
 """
 from __future__ import annotations
+import json
 
 from . import receipt as _rcpt
 
 SPEC = "vcr/1"          # verifiable-claim-receipt, version 1
 ALGORITHMS = ("ed25519", "hmac-sha256")
+MAX_RECEIPT_BYTES = 128 * 1024   # cap untrusted receipts on the FREE public verify surface (unmetered)
 
 # JSON-Schema-style description of a compliant receipt (documentation + structural validation, no jsonschema dep)
 SCHEMA = {
@@ -70,6 +72,11 @@ def verify_any(receipt: dict, hmac_secret_hex: str | None = None) -> dict:
     """Verify ANY compliant receipt, issuer-agnostic — structural validity + the cryptographic signature against
     the receipt's OWN embedded public key. No numguard account, no network. For Ed25519 you need nothing but the
     receipt; for HMAC you need the shared secret. Returns a rich verdict."""
+    try:                                        # free public endpoint: reject an oversized/unserializable blob
+        if len(json.dumps(receipt, default=str)) > MAX_RECEIPT_BYTES:
+            return {"valid": False, "reason": f"receipt exceeds {MAX_RECEIPT_BYTES} bytes", "spec": SPEC}
+    except Exception:
+        return {"valid": False, "reason": "receipt is not serializable", "spec": SPEC}
     v = validate(receipt)
     if not v["ok"]:
         return {"valid": False, "reason": "; ".join(v["errors"]), "spec": SPEC}
