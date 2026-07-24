@@ -47,6 +47,7 @@ def _entry_hash(prev: str, seq: int, ts: int, digest: str) -> str:
 # libSQL/Turso DB instead — the public track record then SURVIVES redeploys with no re-seeding. Unset =>
 # the local JSONL file (unchanged; what the tests exercise). Stdlib-only HTTP, no new dependency.
 import urllib.request as _urllib
+import urllib.error as _urllib_error
 
 # Tolerate a messy dashboard paste: the URL is the first whitespace-delimited chunk (a real URL never
 # contains whitespace), and the token is stripped of ALL whitespace/newlines (a JWT never contains any).
@@ -87,8 +88,12 @@ def _turso(sql: str, args=(), _ensure: bool = True):
     body = json.dumps({"requests": reqs}).encode()
     req = _urllib.Request(_http_base() + "/v2/pipeline", data=body,
                           headers={"Authorization": f"Bearer {_TURSO_TOKEN}", "Content-Type": "application/json"})
-    with _urllib.urlopen(req, timeout=15) as r:
-        data = json.load(r)
+    try:
+        with _urllib.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+    except _urllib_error.HTTPError as e:                    # surface Turso's actual complaint, not a bare code
+        detail = e.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError(f"turso HTTP {e.code} @ {_http_base()}: {detail}") from None
     _table_ready[0] = True
     execs = [x for x in data.get("results", []) if x.get("type") == "ok"
              and x.get("response", {}).get("type") == "execute"]
