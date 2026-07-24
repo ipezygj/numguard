@@ -49,10 +49,17 @@ def _entry_hash(prev: str, seq: int, ts: int, digest: str) -> str:
 import urllib.request as _urllib
 import urllib.error as _urllib_error
 
-# Tolerate a messy dashboard paste: the URL is the first whitespace-delimited chunk (a real URL never
-# contains whitespace), and the token is stripped of ALL whitespace/newlines (a JWT never contains any).
-_TURSO_URL = (os.environ.get("NUMGUARD_TURSO_URL", "").split() or [""])[0]
-_TURSO_TOKEN = "".join(os.environ.get("NUMGUARD_TURSO_TOKEN", "").split())
+# Tolerate ANY messy dashboard paste (a phone-typed config): scan the COMBINED content of both env vars
+# and extract the URL and the JWT by shape — so it works even if the URL and token got pasted into the
+# same field, swapped, or wrapped across lines. A URL is libsql://…/https://… up to whitespace; a Turso
+# token is a 3-part JWT (starts `eyJ`). Runs once at import on env values — not on request input.
+import re as _re
+
+_raw_cfg = os.environ.get("NUMGUARD_TURSO_URL", "") + " " + os.environ.get("NUMGUARD_TURSO_TOKEN", "")
+_url_m = _re.search(r'(?:libsql|https|http)://[^\s]+', _raw_cfg)
+_jwt_m = _re.search(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', _raw_cfg)
+_TURSO_URL = _url_m.group(0) if _url_m else ""
+_TURSO_TOKEN = _jwt_m.group(0) if _jwt_m else ""
 _DDL = ("CREATE TABLE IF NOT EXISTS numguard_ledger (seq INTEGER PRIMARY KEY, ts INTEGER, digest TEXT, kind TEXT, "
         "survives TEXT, public_key TEXT, prev TEXT, hash TEXT, receipt TEXT)")
 _COLS = ("seq", "ts", "digest", "kind", "survives", "public_key", "prev", "hash", "receipt")

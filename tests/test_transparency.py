@@ -121,7 +121,7 @@ def test_durable_turso_backend(monkeypatch):
     same verifiable receipts, exercised against an in-memory fake of the Turso HTTP API."""
     import importlib
     monkeypatch.setenv("NUMGUARD_TURSO_URL", "libsql://fake.turso.io")
-    monkeypatch.setenv("NUMGUARD_TURSO_TOKEN", "faketoken")
+    monkeypatch.setenv("NUMGUARD_TURSO_TOKEN", "eyJhbGc.eyJhIjoicncifQ.c2lnbmF0dXJl")   # JWT-shaped fake
     from numguard import transparency as T, receipt as R, identity
     importlib.reload(identity)
     importlib.reload(T)
