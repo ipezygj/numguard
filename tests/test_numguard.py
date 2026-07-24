@@ -484,3 +484,26 @@ def test_onchain_writes_are_idempotent(tmp_path, monkeypatch):
     assert e["attestation_uid"] == "0xBEEF" and e["deduped"] is True
     assert onchain_log.get(d, "anchor")["tx"] == "0xDEAD"      # case-insensitive, kind-scoped index
     assert onchain_log.get(d, "missing") is None
+
+
+def test_guard_reflex_gates_a_number():
+    """The drop-in reflex: require() raises on a claim that doesn't survive and returns the verdict when it does;
+    verify_return gates a function's output; require_backtest raises on a fraudulent series."""
+    import pytest, random
+    from numguard.guard import require, survives, verify_return, require_backtest, NumberNotVerified
+    with pytest.raises(NumberNotVerified):
+        require("backtest", sr=0.12, T=250, n_trials=100)          # overfit
+    assert require("backtest", sr=0.15, T=1000, n_trials=1)["survives"] is True
+    assert survives("model_gap", n=2000, p1=0.85, p2=0.80) is True
+
+    @verify_return("backtest", extract=lambda r: {"sr": r["sr"], "T": r["T"], "n_trials": r["n"]})
+    def strat():
+        return {"sr": 0.12, "T": 250, "n": 100}
+    with pytest.raises(NumberNotVerified):
+        strat()
+    rng = random.Random(7)
+    a = [rng.gauss(0, 0.01) for _ in range(300)]
+    look_ahead = [(1 if a[t] > 0 else -1) * a[t] for t in range(300)]
+    pos = [1.0 if a[t] > 0 else -1.0 for t in range(300)]
+    with pytest.raises(NumberNotVerified):
+        require_backtest(look_ahead, positions=pos, asset_returns=a)
