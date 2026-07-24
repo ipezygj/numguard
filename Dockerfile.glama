@@ -1,0 +1,21 @@
+# Glama introspection image — runs numguard as a STDIO MCP server so Glama can enumerate tools.
+#
+# The root ./Dockerfile intentionally runs HTTP uvicorn (Render/Fly deploy the paid endpoint from it).
+# Glama's introspection speaks stdio, and pointing it at the HTTP image yields "cannot be installed".
+# This image is stdio-only and needs NO keys: tools/list works keyless (verified 23 tools), so Glama
+# can score it without NUMGUARD_PAYTO / NUMGUARD_GAS_KEY.
+#
+# In the Glama admin page for this server, set the Dockerfile path to `Dockerfile.glama`.
+FROM python:3.12-slim
+
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md ./
+COPY numguard ./numguard
+RUN pip install --no-cache-dir . "cryptography>=41" "web3>=6" \
+    "agent-tripwire @ git+https://github.com/ipezygj/agent-guard@master"
+
+# stdio transport is the default; set explicitly so the intent is unmistakable to Glama.
+ENV NUMGUARD_TRANSPORT=stdio
+CMD ["python", "-m", "numguard.mcp_server"]
