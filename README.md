@@ -2,6 +2,8 @@
 
 [![smithery badge](https://smithery.ai/badge/ipezygj2/numguard)](https://smithery.ai/servers/ipezygj2/numguard)
 
+<sub>MCP registry identity — `mcp-name: io.github.ipezygj/numguard`</sub>
+
 **The verification layer for the agent economy — an agent-callable primitive that checks a number before it gets asserted, and hands back a signed receipt proving it was checked.**
 
 Agents now produce an explosion of numbers: eval scores, A/B results, "the agent improved 12%", benchmark rankings, backtest Sharpes. The scarce resource isn't the number — it's *trust* in the number. `numguard` is the tool an agent calls mid-task to ask **"does this survive a second look?"**, and to attach a portable, tamper-evident receipt so the answer travels with the claim.
