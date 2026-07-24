@@ -393,7 +393,8 @@ def open_commitment(
     stores the raw returns — so holding the promise indefinitely costs constant memory and no background compute
     (it only updates when you push data)."""
     return _billed(api_key, "open_commitment",
-                   lambda: _commit.open_commitment(claimed_sr, periods_per_year=periods_per_year, label=label))
+                   lambda: _commit.open_commitment(claimed_sr, periods_per_year=periods_per_year, label=label,
+                                                   owner=_commit.owner_hash(api_key)))
 
 
 @mcp.tool(annotations=_ann("Report live returns to a commitment (streaming)"))
@@ -405,13 +406,27 @@ def report_returns(
     """Fold new live returns into a commitment and get the current HELD / DECAYED / BROKEN verdict. O(1) per
     return; the raw returns are not stored. Call it whenever you have new live data — daily, weekly, whenever."""
     return _billed(api_key, "report_returns",
-                   lambda: _commit.report(commitment_id, new_returns))
+                   lambda: _commit.report(commitment_id, new_returns, owner=_commit.owner_hash(api_key)))
 
 
-@mcp.tool(annotations=_ann("Current verdict for a commitment (free)"))
-def commitment_status(commitment_id: Annotated[str, Field(description="The id from open_commitment.")]) -> dict:
-    """The current HELD / DECAYED / BROKEN / PENDING verdict for a tracked commitment — free, no api_key."""
-    return _commit.status(commitment_id)
+@mcp.tool(annotations=_ann("Current verdict for your commitment (free)"))
+def commitment_status(api_key: ApiKey,
+                      commitment_id: Annotated[str, Field(description="The id from open_commitment.")]) -> dict:
+    """The current HELD / DECAYED / BROKEN / PENDING verdict for YOUR tracked commitment — free. Requires the
+    api_key that opened it (a leaked id alone can't read it)."""
+    return _commit.status(commitment_id, owner=_commit.owner_hash(api_key))
+
+
+@mcp.tool(annotations=_ann("Sign a portable proof of a commitment's track record"))
+def commitment_receipt(api_key: ApiKey,
+                       commitment_id: Annotated[str, Field(description="The id from open_commitment.")]) -> dict:
+    """Issue a portable, signed (Ed25519) attestation of your commitment's LIVE track record — the accountable
+    credential you can SHOW to anyone ('numguard-verified: N live obs, edge HELD'). Recomputed server-side,
+    tamper-evident, verifiable with only the public key via verify_receipt."""
+    priv, pub = _issuer()
+    return _billed(api_key, "issue_receipt",
+                   lambda: _commit.signed_track_record(commitment_id, priv, pub,
+                                                       owner=_commit.owner_hash(api_key)))
 
 
 @mcp.tool(annotations=_ann("Verify ANY claim receipt (free, issuer-agnostic)"))

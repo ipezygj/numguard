@@ -358,3 +358,27 @@ def test_streaming_commitment_is_O1_and_matches_batch(tmp_path, monkeypatch):
     p = commitments.open_commitment(0.2)
     commitments.report(p["commitment_id"], all_returns[:5])
     assert commitments.status(p["commitment_id"])["verdict_label"] == "PENDING"
+
+
+def test_commitment_owner_binding_and_signed_track_record(tmp_path, monkeypatch):
+    """A commitment is bound to its opener: a leaked id alone can't report to or read it. And its live track
+    record can be issued as a portable, signed, verifiable credential."""
+    import random
+    from pathlib import Path
+    from numguard import commitments, receipt
+    monkeypatch.setattr(commitments, "_STORE", Path(tmp_path) / "c.json")
+    rng = random.Random(41)
+    alice = commitments.owner_hash("alice-key")
+    bob = commitments.owner_hash("bob-key")
+    o = commitments.open_commitment(0.2, owner=alice)
+    cid = o["commitment_id"]
+    for _ in range(15):
+        commitments.report(cid, [rng.gauss(0.0026, 0.01) for _ in range(50)], owner=alice)
+    assert "error" in commitments.report(cid, [0.5] * 10, owner=bob)          # not bob's
+    assert "error" in commitments.status(cid, owner=bob)
+    st = commitments.status(cid, owner=alice)
+    assert st["verdict_label"] == "HELD"
+    priv, pub = receipt.keypair()
+    rc = commitments.signed_track_record(cid, priv, pub, owner=alice)
+    assert rc["payload"]["claim"]["kind"] == "track_record" and receipt.verify_receipt(rc) is True
+    assert "error" in commitments.signed_track_record(cid, priv, pub, owner=bob)  # bob can't sign alice's record
