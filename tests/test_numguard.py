@@ -353,7 +353,11 @@ def test_streaming_commitment_is_O1_and_matches_batch(tmp_path, monkeypatch):
     assert st["observations"] == 750
     assert st["verdict_label"] == batch["verdict_label"] == "BROKEN"
     assert abs(st["realized_sharpe"] - batch["realized_sharpe"]) < 1e-9   # streaming == batch
-    assert len(commitments._read()[cid]["state"]) == 5                    # constant memory regardless of history
+    import sqlite3, json as _json
+    _c = sqlite3.connect(str(commitments._STORE))
+    _state = _c.execute("SELECT state FROM commitments WHERE cid=?", (cid,)).fetchone()[0]
+    _c.close()
+    assert len(_json.loads(_state)) == 5                                  # constant memory (Welford) vs history
     # too-few observations -> PENDING, not a vacuous verdict
     p = commitments.open_commitment(0.2)
     commitments.report(p["commitment_id"], all_returns[:5])
