@@ -37,30 +37,56 @@ def _sharpe_se(sr: float, T: int, skew: float, kurt: float) -> float:
     return math.sqrt(var) if var > 0 else math.sqrt(max(1e-12, (1.0 + 0.5 * sr * sr) / T))
 
 
-def reconcile(claimed_sr: float, realized_returns: Sequence[float], *,
-              periods_per_year: int = 252, alpha: float = 0.05) -> dict:
-    """Reconcile a CLAIMED per-period Sharpe against a strategy's REALIZED live returns.
+# --------------------------------------------------------------------------- #
+# streaming sufficient statistics — hold a promise forever at O(1)/observation
+# --------------------------------------------------------------------------- #
+# Welford/Terriberry online moments: numerically stable, O(1) per point, ~5 floats total regardless of history.
+# numguard never stores the raw returns — only this state — so tracking a live strategy costs constant memory.
+def stream_init() -> dict:
+    return {"n": 0, "mean": 0.0, "M2": 0.0, "M3": 0.0, "M4": 0.0}
 
-    Verdict:
-      HELD    — realized is on track (>= claim, or within half a standard error below it)
-      DECAYED — realized is below the claim but not significantly (plausibly noise; watch it)
-      BROKEN  — realized is significantly below the claim (p <= alpha): the backtest overstated the edge
-    """
-    T = len(realized_returns)
-    if T < 8:
+
+def stream_update(s: dict, x: float) -> dict:
+    n1 = s["n"]; n = n1 + 1
+    delta = x - s["mean"]; dn = delta / n; dn2 = dn * dn
+    term1 = delta * dn * n1
+    s["mean"] += dn
+    s["M4"] += term1 * dn2 * (n * n - 3 * n + 3) + 6 * dn2 * s["M2"] - 4 * dn * s["M3"]
+    s["M3"] += term1 * dn * (n - 2) - 3 * dn * s["M2"]
+    s["M2"] += term1
+    s["n"] = n
+    return s
+
+
+def stream_stats(s: dict):
+    """(n, mean, sd, skew, kurt) from the running state — no history needed."""
+    n = s["n"]
+    if n < 2:
+        return n, s["mean"], 0.0, 0.0, 3.0
+    var = s["M2"] / n
+    sd = var ** 0.5 if var > 0 else 0.0
+    if sd == 0:
+        return n, s["mean"], 0.0, 0.0, 3.0
+    skew = (s["M3"] / n) / (var ** 1.5)
+    kurt = (s["M4"] / n) / (var * var)      # non-excess (normal = 3)
+    return n, s["mean"], sd, skew, kurt
+
+
+def reconcile_from_stats(claimed_sr: float, n: int, mean: float, sd: float, skew: float, kurt: float, *,
+                         periods_per_year: int = 252, alpha: float = 0.05) -> dict:
+    """The reconciliation verdict from summary stats alone — O(1), used by both the batch and streaming paths."""
+    if n < 8:
         return {"error": "need >= 8 realized returns"}
     if claimed_sr is None or claimed_sr <= 0:
         return {"error": "claimed_sr must be a positive per-period Sharpe"}
-
-    realized_sr = _sharpe(realized_returns) or 0.0
-    _, _, skew, kurt = _moments(realized_returns)
-    se = _sharpe_se(claimed_sr, T, skew, kurt)             # SE of a Sharpe estimate under the claim
-    z = (realized_sr - claimed_sr) / se                    # negative => underperforming the claim
-    p_below = _norm_cdf(z)                                 # one-sided: P(realized this low or lower | true=claim)
-
-    decay_ratio = realized_sr / claimed_sr                 # fraction of the claimed edge realized
+    realized_sr = mean / sd if sd > 0 else 0.0
+    se = _sharpe_se(claimed_sr, n, skew, kurt)
+    z = (realized_sr - claimed_sr) / se
+    p_below = _norm_cdf(z)
+    decay_ratio = realized_sr / claimed_sr
     survived_pct = round(100.0 * max(0.0, realized_sr) / claimed_sr, 1)
     ann = periods_per_year ** 0.5
+    T = n
 
     if realized_sr >= claimed_sr - 0.5 * se:
         verdict, held = "HELD", True
@@ -83,6 +109,20 @@ def reconcile(claimed_sr: float, realized_returns: Sequence[float], *,
             "live_periods": T, "sharpe_se": round(se, 4), "z": round(z, 2), "p_below": round(p_below, 4),
             "decay_ratio": round(decay_ratio, 3), "edge_survived_pct": survived_pct,
             "verdict": line}
+
+
+def reconcile(claimed_sr: float, realized_returns: Sequence[float], *,
+              periods_per_year: int = 252, alpha: float = 0.05) -> dict:
+    """Batch reconcile: fold the realized returns through the streaming stats, then judge. Identical result to
+    feeding them one at a time to a commitment (same sufficient statistics)."""
+    if len(realized_returns) < 8:
+        return {"error": "need >= 8 realized returns"}
+    s = stream_init()
+    for x in realized_returns:
+        stream_update(s, float(x))
+    n, mean, sd, skew, kurt = stream_stats(s)
+    return reconcile_from_stats(claimed_sr, n, mean, sd, skew, kurt,
+                                periods_per_year=periods_per_year, alpha=alpha)
 
 
 def min_periods_to_confirm(claimed_sr: float, realized_sr: float, alpha: float = 0.05) -> dict:

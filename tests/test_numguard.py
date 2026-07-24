@@ -333,3 +333,28 @@ def test_receipt_spec_verifies_any_issuer_free():
     # a structurally broken receipt fails validation, not with a crash
     assert S.verify_any({"payload": {}})["valid"] is False
     assert S.describe()["spec"] == "vcr/1" and "schema" in S.describe()
+
+
+def test_streaming_commitment_is_O1_and_matches_batch(tmp_path, monkeypatch):
+    """Holding a promise over time costs constant memory: a commitment folds returns at O(1) each, never stores
+    raw returns (~5-float state), and its verdict matches the batch reconcile on the same data."""
+    import random
+    from pathlib import Path
+    from numguard import commitments, forward
+    monkeypatch.setattr(commitments, "_STORE", Path(tmp_path) / "c.json")
+    rng = random.Random(31)
+    all_returns = [rng.gauss(0.0, 0.012) for _ in range(750)]     # claimed strong, live edge dead
+    o = commitments.open_commitment(0.2)
+    cid = o["commitment_id"]
+    for i in range(0, 750, 50):                                    # report in chunks
+        commitments.report(cid, all_returns[i:i + 50])
+    st = commitments.status(cid)
+    batch = forward.reconcile(0.2, all_returns)
+    assert st["observations"] == 750
+    assert st["verdict_label"] == batch["verdict_label"] == "BROKEN"
+    assert abs(st["realized_sharpe"] - batch["realized_sharpe"]) < 1e-9   # streaming == batch
+    assert len(commitments._read()[cid]["state"]) == 5                    # constant memory regardless of history
+    # too-few observations -> PENDING, not a vacuous verdict
+    p = commitments.open_commitment(0.2)
+    commitments.report(p["commitment_id"], all_returns[:5])
+    assert commitments.status(p["commitment_id"])["verdict_label"] == "PENDING"

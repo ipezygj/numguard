@@ -21,6 +21,7 @@ from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcp
 from . import backtest_battery as _battery
 from . import forward as _forward
 from . import receipt_spec as _spec
+from . import commitments as _commit
 
 
 class _Out(BaseModel):
@@ -377,6 +378,40 @@ def reconcile_backtest(
     _limits.check_list("realized_returns", realized_returns)
     return _billed(api_key, "reconcile_backtest",
                    lambda: _forward.reconcile(claimed_sr, realized_returns, periods_per_year=periods_per_year))
+
+
+@mcp.tool(annotations=_ann("Open a live-tracked commitment to a claimed Sharpe"))
+def open_commitment(
+    api_key: ApiKey,
+    claimed_sr: Annotated[float, Field(description="The per-period Sharpe the backtest claims — the promise "
+                                                  "to hold to.")],
+    periods_per_year: Annotated[int, Field(description="Periods per year (252 daily).")] = 252,
+    label: Annotated[str, Field(description="Optional label for the strategy.")] = "",
+) -> dict:
+    """Open a commitment that numguard tracks over time. It returns a commitment_id; report live returns to it
+    with report_returns as they arrive. numguard folds each return into running statistics at O(1) and never
+    stores the raw returns — so holding the promise indefinitely costs constant memory and no background compute
+    (it only updates when you push data)."""
+    return _billed(api_key, "open_commitment",
+                   lambda: _commit.open_commitment(claimed_sr, periods_per_year=periods_per_year, label=label))
+
+
+@mcp.tool(annotations=_ann("Report live returns to a commitment (streaming)"))
+def report_returns(
+    api_key: ApiKey,
+    commitment_id: Annotated[str, Field(description="The id from open_commitment.")],
+    new_returns: Annotated[list, Field(description="The new live per-period returns since you last reported.")],
+) -> dict:
+    """Fold new live returns into a commitment and get the current HELD / DECAYED / BROKEN verdict. O(1) per
+    return; the raw returns are not stored. Call it whenever you have new live data — daily, weekly, whenever."""
+    return _billed(api_key, "report_returns",
+                   lambda: _commit.report(commitment_id, new_returns))
+
+
+@mcp.tool(annotations=_ann("Current verdict for a commitment (free)"))
+def commitment_status(commitment_id: Annotated[str, Field(description="The id from open_commitment.")]) -> dict:
+    """The current HELD / DECAYED / BROKEN / PENDING verdict for a tracked commitment — free, no api_key."""
+    return _commit.status(commitment_id)
 
 
 @mcp.tool(annotations=_ann("Verify ANY claim receipt (free, issuer-agnostic)"))

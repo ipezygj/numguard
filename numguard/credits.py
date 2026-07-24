@@ -30,6 +30,8 @@ PRICES = {
     "verify_guard_trace": 3,  # recompute an agent action-trace's behavioural-guard verdict + sign it
     "verify_backtest_series": 5,  # full integrity battery on the returns series (leakage/HAC/PBO/DD/…)
     "reconcile_backtest": 4,      # accountability: did a claimed backtest Sharpe survive LIVE returns?
+    "open_commitment": 1,         # open a live-tracked promise (O(1)/observation, constant memory)
+    "report_returns": 2,          # fold new live returns into a commitment + current verdict
 }
 FREE_TIER_CALLS = 25          # per key, before any charge — let the agent feel the value first
 
