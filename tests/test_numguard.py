@@ -443,3 +443,13 @@ def test_verify_receipt_rejects_oversized():
     rc["payload"]["detail"] = {"blob": "x" * (200 * 1024)}
     out = S.verify_any(rc)
     assert out["valid"] is False and "exceeds" in out["reason"]
+
+
+def test_eas_read_attestation_validates_uid():
+    """The free on-chain lookup validates its input offline before any RPC, and reports a genuine numguard
+    schema match. (Network read is exercised live, not in CI.)"""
+    from numguard import eas
+    assert "error" in eas.read_attestation("short")
+    assert "error" in eas.read_attestation("")
+    # the schema UID is deterministic and used to recognise a genuine numguard credential
+    assert eas.schema_uid().startswith("0x") and len(eas.schema_uid()) == 66

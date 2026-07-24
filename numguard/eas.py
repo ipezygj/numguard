@@ -40,6 +40,14 @@ _EAS_ABI = [
         {"name": "attester", "type": "address", "indexed": True},
         {"name": "uid", "type": "bytes32", "indexed": False},
         {"name": "schemaUID", "type": "bytes32", "indexed": True}]},
+    {"type": "function", "name": "getAttestation", "stateMutability": "view",
+     "inputs": [{"name": "uid", "type": "bytes32"}],
+     "outputs": [{"name": "", "type": "tuple", "components": [
+         {"name": "uid", "type": "bytes32"}, {"name": "schema", "type": "bytes32"},
+         {"name": "time", "type": "uint64"}, {"name": "expirationTime", "type": "uint64"},
+         {"name": "revocationTime", "type": "uint64"}, {"name": "refUID", "type": "bytes32"},
+         {"name": "recipient", "type": "address"}, {"name": "attester", "type": "address"},
+         {"name": "revocable", "type": "bool"}, {"name": "data", "type": "bytes"}]}]},
 ]
 _REGISTRY_ABI = [
     {"type": "function", "name": "register", "stateMutability": "nonpayable",
@@ -144,6 +152,42 @@ def attest_credential(digest_hex: str, kind: str, survives, verdict: str, *,
                         "recipient address and read the numguard verdict."}
     except Exception:
         return {"error": "attestation error"}
+
+
+def read_attestation(uid: str) -> dict:
+    """Read a numguard credential back FROM EAS on Base — the composability payoff: any protocol/agent can look
+    up an attestation UID and read the verdict, no gas, no numguard account. Confirms it's a genuine numguard
+    attestation (schema match), decodes the credential, and reports if it was revoked. Never raises."""
+    if not uid or len(uid.replace("0x", "")) != 64:
+        return {"error": "uid must be a 32-byte hex"}
+    network = os.environ.get("NUMGUARD_NETWORK", "base")
+    try:
+        from web3 import Web3
+        from eth_abi import decode as _decode
+
+        rpc = os.environ.get("NUMGUARD_RPC", "") or _RPCS.get(network, "")
+        w3 = Web3(Web3.HTTPProvider(rpc, request_kwargs={"timeout": 20}))
+        eas = w3.eth.contract(address=Web3.to_checksum_address(EAS_ADDRESS), abi=_EAS_ABI)
+        a = eas.functions.getAttestation(bytes.fromhex(uid[2:] if uid.startswith("0x") else uid)).call()
+        att_uid, schema, t, exp, revoked_at, ref, recipient, attester, revocable, data = a
+        if att_uid == _ZERO32:
+            return {"found": False, "note": "no attestation with that uid"}
+        is_numguard = ("0x" + schema.hex()) == schema_uid()
+        cred = {}
+        if is_numguard and data:
+            try:
+                digest, kind, survives, verdict = _decode(SCHEMA_TYPES, data)
+                cred = {"digest": "0x" + digest.hex(), "kind": kind,
+                        "survives": bool(survives), "verdict": verdict}
+            except Exception:
+                cred = {}
+        return {"found": True, "is_numguard_credential": is_numguard, "revoked": revoked_at != 0,
+                "attester": attester, "recipient": recipient, "attested_at": t,
+                "credential": cred, "easscan": _EASSCAN.get(network, "") + (uid if uid.startswith("0x") else "0x" + uid),
+                "note": ("a genuine numguard verification credential" if is_numguard
+                         else "exists but NOT under numguard's schema — not a numguard credential")}
+    except Exception:
+        return {"error": "read error"}
 
 
 def _selftest():

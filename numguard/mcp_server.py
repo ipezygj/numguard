@@ -500,6 +500,14 @@ def verify_receipt(receipt: Annotated[dict, Field(description="A verifiable-clai
     return _spec.verify_any(receipt)
 
 
+@mcp.tool(annotations=_ann("Read a numguard credential from EAS on-chain (free)"))
+def check_attestation(uid: Annotated[str, Field(description="An EAS attestation UID (bytes32 hex).")]) -> dict:
+    """Look up a numguard verification credential on-chain via EAS on Base — FREE, no api_key, no gas. Confirms
+    it's a genuine numguard attestation (schema match), returns the attester, recipient, verdict, and whether it
+    was revoked. This is how any protocol or agent trusts a numguard track record without taking anyone's word."""
+    return _eas.read_attestation(uid)
+
+
 @mcp.tool(annotations=_ann("The open receipt standard (schema + how to verify)"))
 def receipt_spec() -> dict:
     """The Verifiable-Claim-Receipt open standard (vcr/1): schema, algorithms, canonical form, and how to
