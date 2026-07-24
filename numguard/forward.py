@@ -108,6 +108,9 @@ def reconcile_from_stats(claimed_sr: float, n: int, mean: float, sd: float, skew
             "claimed_sharpe": round(claimed_sr, 4), "realized_sharpe": round(realized_sr, 4),
             "live_periods": T, "sharpe_se": round(se, 4), "z": round(z, 2), "p_below": round(p_below, 4),
             "decay_ratio": round(decay_ratio, 3), "edge_survived_pct": survived_pct,
+            # HONEST DISCLOSURE: this judges the returns the caller REPORTED — it proves consistency with the
+            # claim, NOT real-world performance. A verified feed (on-chain vault P&L) would be needed for that.
+            "data_source": "self_reported",
             "verdict": line}
 
 

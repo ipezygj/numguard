@@ -411,23 +411,20 @@ def test_eas_attestation_encoding_and_schema(monkeypatch):
     assert "unavailable" in eas.attest_credential("ef" * 32, "k", True, "v")["error"]
 
 
-def test_bonded_commitment_cold_start(tmp_path, monkeypatch):
-    """A reputation-less agent bootstraps trust by BONDING a claim: it stakes confidence, and the resolved
-    outcome (HELD/BROKEN) becomes a permanent, attestable credential — no track record or code needed."""
+def test_accountability_discloses_self_reported(tmp_path, monkeypatch):
+    """Honesty: an accountability verdict / track-record credential must disclose that it judges the returns the
+    caller REPORTED — not a verified performance feed — so it can't be read as proof of real performance."""
     import random
     from pathlib import Path
-    from numguard import commitments, receipt
+    from numguard import commitments, forward, receipt
     monkeypatch.setattr(commitments, "_STORE", Path(tmp_path) / "c.json")
     rng = random.Random(51)
-    owner = commitments.owner_hash("newbie")
-    o = commitments.open_commitment(0.15, owner=owner, bond_usd=500, resolve_after=300)
-    assert o["bonded"]["bond_usd"] == 500.0
-    cid = o["commitment_id"]
-    for _ in range(7):
+    r = forward.reconcile(0.15, [rng.gauss(0.002, 0.01) for _ in range(300)])
+    assert r["data_source"] == "self_reported"
+    owner = commitments.owner_hash("agent")
+    cid = commitments.open_commitment(0.15, owner=owner)["commitment_id"]
+    for _ in range(6):
         commitments.report(cid, [rng.gauss(0.002, 0.01) for _ in range(50)], owner=owner)
-    st = commitments.status(cid, owner=owner)
-    assert st["verdict_label"] == "HELD" and st["bond_resolved"] is True and st["bond_outcome"] == "HELD"
     priv, pub = receipt.keypair()
     rc = commitments.signed_track_record(cid, priv, pub, owner=owner)
-    assert rc["payload"]["detail"]["bond_usd"] == 500.0 and rc["payload"]["detail"]["bond_outcome"] == "HELD"
-    assert receipt.verify_receipt(rc) is True
+    assert rc["payload"]["detail"]["data_source"] == "self_reported"

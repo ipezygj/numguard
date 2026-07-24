@@ -76,15 +76,6 @@ def _verdict(cid: str, c: dict) -> dict:
     v["observations"] = n
     if c.get("label"):
         v["label"] = c["label"]
-    bond = c.get("bond_usd", 0.0)
-    if bond:
-        after = c.get("resolve_after", 0)
-        resolved = (n >= after) if after else (v["verdict_label"] in ("HELD", "BROKEN"))
-        v["bond_usd"] = bond
-        v["bond_resolved"] = bool(resolved)
-        v["bond_outcome"] = (v["verdict_label"] if resolved else "pending")
-        v["bond_note"] = (f"bond ${bond:g} RESOLVED {v['verdict_label']}" if resolved
-                          else f"bond ${bond:g} pending — needs {max(0, after - n)} more observations")
     return v
 
 
@@ -94,14 +85,14 @@ def _owned(c: dict, owner: str) -> bool:
     return (not o) or hmac.compare_digest(o, owner or "")
 
 
-def open_commitment(claimed_sr: float, periods_per_year: int = 252, label: str = "", owner: str = "",
-                    bond_usd: float = 0.0, resolve_after: int = 0) -> dict:
+def open_commitment(claimed_sr: float, periods_per_year: int = 252, label: str = "", owner: str = "") -> dict:
     """Open a commitment to a claimed per-period Sharpe. Returns a commitment_id to report live returns against.
-    `owner` binds it to the opener. **Cold-start bootstrapping:** a new agent with no history can post a
-    `bond_usd` (skin in the game) behind the claim and a `resolve_after` (observations after which it settles).
-    The bonded outcome (HELD after resolve_after, or BROKEN) becomes a permanent, attestable credential — so
-    confidence-at-stake substitutes for a track record you don't have yet. (Bond is recorded + resolved here;
-    real-USDC escrow wires to the x402 rail — see note.)"""
+    `owner` (a hash of the caller's api_key) binds it so only the opener can report/read it.
+
+    NOTE: this tracks the returns the caller REPORTS — it's an honesty/consistency check, not proof of real
+    performance (a determined agent could report fabricated returns). Bonding/staking on this was DELIBERATELY
+    NOT built: on self-reported data a bond becomes reputation-laundering (needs a verified on-chain feed +
+    non-custodial escrow + a trust-minimized oracle first — see the design review)."""
     if claimed_sr is None or float(claimed_sr) <= 0:
         raise ValueError("claimed_sr must be a positive per-period Sharpe")
     cid = "cm_" + secrets.token_urlsafe(12)
@@ -109,17 +100,11 @@ def open_commitment(claimed_sr: float, periods_per_year: int = 252, label: str =
     with _LOCK:
         d = _read(for_write=True)
         d[cid] = {"claimed_sr": float(claimed_sr), "ppy": int(periods_per_year), "label": str(label)[:80],
-                  "state": _forward.stream_init(), "owner": owner, "bond_usd": max(0.0, float(bond_usd)),
-                  "resolve_after": max(0, int(resolve_after)), "opened_at": now, "updated_at": now}
+                  "state": _forward.stream_init(), "owner": owner, "opened_at": now, "updated_at": now}
         _evict(d)
         _save(d)
-    out = {"commitment_id": cid, "claimed_sharpe": float(claimed_sr), "observations": 0,
-           "note": "report live returns to this id with report_returns; numguard folds them at O(1) each."}
-    if bond_usd:
-        out["bonded"] = {"bond_usd": max(0.0, float(bond_usd)), "resolve_after": max(0, int(resolve_after)),
-                         "meaning": "you stake this on the claim holding; a BROKEN resolution is a permanent, "
-                                    "public black mark — that's how a reputation-less agent buys credibility."}
-    return out
+    return {"commitment_id": cid, "claimed_sharpe": float(claimed_sr), "observations": 0,
+            "note": "report live returns to this id with report_returns; numguard folds them at O(1) each."}
 
 
 def report(commitment_id: str, new_returns, owner: str = "") -> dict:
@@ -165,10 +150,8 @@ def signed_track_record(commitment_id: str, private_hex: str, public_hex: str = 
               "commitment_id": commitment_id, "claimed_sharpe": c["claimed_sr"],
               "realized_sharpe": v.get("realized_sharpe"), "observations": v.get("observations"),
               "verdict_label": v.get("verdict_label"), "opened_at": c.get("opened_at"),
-              "label": c.get("label", "")}
-    if c.get("bond_usd", 0.0):
-        record["bond_usd"] = v.get("bond_usd")
-        record["bond_outcome"] = v.get("bond_outcome")     # a bonded, resolved outcome is the strongest signal
+              "label": c.get("label", ""),
+              "data_source": "self_reported"}    # honest: reported returns, not a verified performance feed
     return _rcpt.issue_receipt(record, private_hex, public_hex)
 
 
