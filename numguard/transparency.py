@@ -41,7 +41,80 @@ def _entry_hash(prev: str, seq: int, ts: int, digest: str) -> str:
     return hashlib.sha256(f"{prev}|{seq}|{ts}|{digest}".encode()).hexdigest()
 
 
+# ------------------------------------------------------------------ durable backend (Turso, optional)
+# A free-tier host has no persistent disk → the JSONL ledger is wiped on every redeploy. Set
+# NUMGUARD_TURSO_URL (libsql://… or https://…) + NUMGUARD_TURSO_TOKEN and the ledger lives in a durable
+# libSQL/Turso DB instead — the public track record then SURVIVES redeploys with no re-seeding. Unset =>
+# the local JSONL file (unchanged; what the tests exercise). Stdlib-only HTTP, no new dependency.
+import urllib.request as _urllib
+
+_TURSO_URL = os.environ.get("NUMGUARD_TURSO_URL", "").strip()
+_TURSO_TOKEN = os.environ.get("NUMGUARD_TURSO_TOKEN", "").strip()
+_DDL = ("CREATE TABLE IF NOT EXISTS ledger (seq INTEGER PRIMARY KEY, ts INTEGER, digest TEXT, kind TEXT, "
+        "survives TEXT, public_key TEXT, prev TEXT, hash TEXT, receipt TEXT)")
+_COLS = ("seq", "ts", "digest", "kind", "survives", "public_key", "prev", "hash", "receipt")
+_table_ready = [False]
+
+
+def _turso_on() -> bool:
+    return bool(_TURSO_URL and _TURSO_TOKEN)
+
+
+def _http_base() -> str:
+    u = _TURSO_URL
+    if u.startswith("libsql://"):
+        u = "https://" + u[len("libsql://"):]
+    return u.rstrip("/")
+
+
+def _arg(v):
+    if v is None:
+        return {"type": "null"}
+    if isinstance(v, int) and not isinstance(v, bool):
+        return {"type": "integer", "value": str(v)}
+    return {"type": "text", "value": str(v)}
+
+
+def _turso(sql: str, args=(), _ensure: bool = True):
+    """Run one SQL statement on Turso via the HTTP pipeline API; return (rows_as_dicts, affected)."""
+    reqs = []
+    if _ensure and not _table_ready[0]:
+        reqs.append({"type": "execute", "stmt": {"sql": _DDL}})
+    reqs.append({"type": "execute", "stmt": {"sql": sql, "args": [_arg(a) for a in args]}})
+    reqs.append({"type": "close"})
+    body = json.dumps({"requests": reqs}).encode()
+    req = _urllib.Request(_http_base() + "/v2/pipeline", data=body,
+                          headers={"Authorization": f"Bearer {_TURSO_TOKEN}", "Content-Type": "application/json"})
+    with _urllib.urlopen(req, timeout=15) as r:
+        data = json.load(r)
+    _table_ready[0] = True
+    execs = [x for x in data.get("results", []) if x.get("type") == "ok"
+             and x.get("response", {}).get("type") == "execute"]
+    if not execs:
+        raise RuntimeError(f"turso: {data}")
+    res = execs[-1]["response"]["result"]              # our statement is the last execute
+    cols = [c.get("name") for c in res.get("cols", [])]
+    rows = []
+    for row in res.get("rows", []):
+        rows.append({cols[i]: (cell.get("value") if cell.get("type") != "null" else None)
+                     for i, cell in enumerate(row)})
+    return rows, res.get("affected_row_count", 0)
+
+
+def _row_to_entry(row: dict) -> dict:
+    sv = row.get("survives")
+    return {"seq": int(row["seq"]), "ts": int(row["ts"]), "digest": row["digest"], "kind": row["kind"],
+            "survives": (True if sv == "true" else False if sv == "false" else None),
+            "public_key": row.get("public_key") or "", "prev": row["prev"], "hash": row["hash"],
+            "receipt": json.loads(row["receipt"]) if row.get("receipt") else None}
+
+
 def _iter_lines():
+    if _turso_on():
+        rows, _ = _turso("SELECT seq,ts,digest,kind,survives,public_key,prev,hash,receipt FROM ledger ORDER BY seq ASC")
+        for row in rows:
+            yield _row_to_entry(row)
+        return
     if not _STORE.exists():
         return
     with _STORE.open("r", encoding="utf-8") as fh:
@@ -52,6 +125,10 @@ def _iter_lines():
 
 
 def _last() -> dict | None:
+    if _turso_on():
+        rows, _ = _turso("SELECT seq,ts,digest,kind,survives,public_key,prev,hash,receipt FROM ledger "
+                         "ORDER BY seq DESC LIMIT 1")
+        return _row_to_entry(rows[0]) if rows else None
     last = None
     for e in _iter_lines():
         last = e
@@ -81,6 +158,13 @@ def publish(receipt: dict, ts: int | None = None) -> dict:
             "public_key": receipt.get("public_key", ""), "prev": prev_hash, "hash": h,
             "receipt": receipt,          # full signed receipt, so /receipts serves verifiable proof
         }
+        if _turso_on():
+            sv = "true" if survives is True else "false" if survives is False else None
+            _turso("INSERT INTO ledger (seq,ts,digest,kind,survives,public_key,prev,hash,receipt) "
+                   "VALUES (?,?,?,?,?,?,?,?,?)",
+                   (seq, ts, digest, kind, sv, entry["public_key"], prev_hash, h,
+                    json.dumps(receipt, separators=(",", ":"))))
+            return entry
         _STORE.parent.mkdir(parents=True, exist_ok=True)
         with _STORE.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, separators=(",", ":")) + "\n")

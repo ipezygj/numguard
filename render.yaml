@@ -19,6 +19,11 @@ services:
                                    # to broadcast settlements. Not your receiving wallet.
       - key: NUMGUARD_RPC
         sync: false                # optional: a private Base RPC (Alchemy/Ankr) if the public one rate-limits
+      - key: NUMGUARD_TURSO_URL
+        sync: false                # durable ledger: a free Turso/libSQL DB URL (libsql://…) so the public
+                                   # verdict record SURVIVES redeploys (no re-seeding). Unset => in-memory file.
+      - key: NUMGUARD_TURSO_TOKEN
+        sync: false                # the Turso DB auth token (from `turso db tokens create`)
       - key: NUMGUARD_ADMIN_KEY
         generateValue: true        # operator seed auth: send it as the X-ADMIN-KEY header to POST /admin/seed
                                    # to publish curated notary verdicts free (no x402). Read its value once

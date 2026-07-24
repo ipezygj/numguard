@@ -114,3 +114,38 @@ def test_admin_seed_is_authed_and_fail_closed(isolated, monkeypatch):
     importlib.reload(rest_api)
     c2 = TestClient(rest_api.app)
     assert c2.post("/admin/seed", headers={"X-ADMIN-KEY": ""}, json=claim).status_code == 401
+
+
+def test_durable_turso_backend(monkeypatch):
+    """The Turso durable path (used on a diskless host so the ledger survives redeploys): same hash-chain,
+    same verifiable receipts, exercised against an in-memory fake of the Turso HTTP API."""
+    import importlib
+    monkeypatch.setenv("NUMGUARD_TURSO_URL", "libsql://fake.turso.io")
+    monkeypatch.setenv("NUMGUARD_TURSO_TOKEN", "faketoken")
+    from numguard import transparency as T, receipt as R, identity
+    importlib.reload(identity)
+    importlib.reload(T)
+    assert T._turso_on()
+    db, cols = [], ("seq", "ts", "digest", "kind", "survives", "public_key", "prev", "hash", "receipt")
+
+    def fake_turso(sql, args=(), _ensure=True):
+        s = sql.strip().upper()
+        if s.startswith("INSERT"):
+            db.append(dict(zip(cols, args)))
+            return [], 1
+        if "ORDER BY SEQ DESC" in s:
+            return ([db[-1]] if db else []), 0
+        if "WHERE DIGEST" in s:
+            return [r for r in db if r["digest"] == args[0]], 0
+        return list(db), 0
+
+    monkeypatch.setattr(T, "_turso", fake_turso)
+    priv, pub = identity.issuer()
+    for i in range(3):
+        T.publish(R.issue_receipt({"claim": {"kind": "backtest", "survives": bool(i % 2)}}, priv, pub), ts=1000 + i)
+    v = T.verify_log()
+    assert v["ok"] and v["count"] == 3
+    feed = T.entries(0, 10)
+    assert [e["seq"] for e in feed] == [2, 1, 0]
+    assert all(R.verify_receipt(e["receipt"]) for e in feed)
+    assert T.head()["head_hash"] == v["head_hash"]
