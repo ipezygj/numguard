@@ -160,10 +160,28 @@ def _make(tool: str, price: float, fn):
 
 
 async def pricing(request):
+    from . import credits as _credits
+    cr = _credits.PRICES
     return JSONResponse({
         "network": NETWORK, "pay_to_configured": bool(PAYTO),
         "prices_usd": {k: v[0] for k, v in ROUTES.items()},
         "how": "POST to /<tool>; on 402 pay USDC per the 'accepts' block and retry with an X-PAYMENT header.",
+        # The value ladder: free maximizes receipt supply; capture moves up. Prices in USD (1 credit = $0.01).
+        "tiers": {
+            "0_free": {"tools": _credits.TIERS["free"] + ["verify_receipt via POST /verify_receipt"],
+                       "price_usd": 0.0, "payer": "nobody — network effect",
+                       "note": "verifying ANY receipt is free forever; 25 free metered calls per key"},
+            "1_per_check": {"tools": _credits.TIERS["per_check"],
+                            "price_usd_range": [0.02, 0.05], "payer": "agents verifying at volume (x402 wedge)"},
+            "2_premium_onchain": {"tools": _credits.TIERS["premium_onchain"],
+                                  "price_usd": {t: round(cr[t] / 100, 2) for t in _credits.TIERS["premium_onchain"]},
+                                  "payer": "operators/funds wanting a permanent, composable on-chain credential",
+                                  "premium_receipt": "a signed vcr/1 receipt ALSO anchored + EAS-attested on Base: "
+                                                     "off-chain proof anyone verifies free + a permanent on-chain credential"},
+            "3_track_record": {"tools": _credits.TIERS["track_record"],
+                               "price_usd": {t: round(cr[t] / 100, 2) for t in _credits.TIERS["track_record"]},
+                               "payer": "operator building an accountable track record over time (subscription-shaped)"},
+        },
     })
 
 
