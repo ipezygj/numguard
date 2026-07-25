@@ -27,6 +27,7 @@ Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval s
 | `verify_judge_bias` | *Is my judge's preference real, or just longer / first / same-family?* |
 | `calibrate_judge` | *Is the LLM judge I trust actually calibrated against ground truth?* |
 | `audit_leaderboard` | *Is #1 on this leaderboard statistically real?* (rank confidence intervals) |
+| **`triage`** (start here) | *I don't know which check I need — here's what I'm about to do or assert, route me.* (front door across numguard + agent-guard + evalgate, free) |
 | **`verify_execution`** | *Don't trust my reported Sharpe — RE-DERIVE it from my positions on committed price data, and catch a number those decisions don't produce.* |
 | **`reconcile_backtest`** | *Did my backtest's claimed Sharpe survive contact with LIVE returns?* (HELD / DECAYED / BROKEN) |
 | **`open_commitment` / `report_returns`** | *Hold my strategy accountable over time — stream live returns, tell me when the edge breaks.* (O(1)/obs) |

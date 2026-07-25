@@ -218,6 +218,24 @@ async def receipt_spec_route(request):
     return JSONResponse(_spec.describe())
 
 
+async def triage_route(request):
+    """FREE, public: the front door — describe an intent, get routed to the right check. GET /triage?intent=...
+    or POST {"intent": "..."}."""
+    if (r := _rl_guard(request)) is not None:
+        return r
+    from . import triage as _triage
+    intent = request.query_params.get("intent", "")
+    if not intent and request.method == "POST":
+        raw = await request.body()
+        if len(raw) > MAX_BODY_BYTES:
+            return JSONResponse({"error": "payload too large"}, status_code=413)
+        try:
+            intent = (json.loads(raw) if raw else {}).get("intent", "")
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    return JSONResponse(_triage.triage(str(intent)[:2000]))
+
+
 # ----------------------------------------------------------------------------------------------------
 # AGENT-PROOF layer (free, public, read-only): the reputation an agent can independently audit.
 #   /pubkey                 the canonical issuer key that verifies EVERY numguard receipt
@@ -357,6 +375,7 @@ routes = [Route("/pricing", pricing), Route("/health", health),
           Route("/receipts", receipts), Route("/receipts/{digest}", receipt_by_digest),
           Route("/verify_receipt", verify_receipt_route, methods=["POST"]),
           Route("/receipt_spec", receipt_spec_route),
+          Route("/triage", triage_route, methods=["GET", "POST"]),
           Route("/precommit/verify/{pid}", precommit_verify),
           Route("/precommit/{pid}", precommit_get),
           Route("/debug/ledger", ledger_status),

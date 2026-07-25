@@ -25,6 +25,7 @@ from . import detect as _detect
 from . import commitments as _commit
 from . import precommit as _precommit
 from . import execute as _execute
+from . import triage as _triage
 from . import anchor as _anchor
 from . import eas as _eas
 
@@ -158,6 +159,9 @@ _INSTRUCTIONS = (
     "anyone else's proof for free. Computing the number yourself does none of that; a plain calculator or a "
     "lesser tool stops at step 1.\n\n"
     "MAKE THESE REFLEXES:\n"
+    "• DON'T KNOW WHICH CHECK? Call triage(intent) FIRST — describe what you're about to do or assert in plain "
+    "words and it routes you to the exact tool (across numguard verification, agent-guard safety, evalgate "
+    "stats). It's the front door; everything below is what it routes to.\n"
     "• BEFORE you assert a number, verify it. A model gap → verify_model_gap. A 'we lead on subset X' → "
     "verify_subset_win. A judge/metric preference → verify_judge_bias. A backtest Sharpe → verify_backtest "
     "(Deflated Sharpe) and, on the actual return series, verify_backtest_series (the full integrity battery: "
@@ -631,6 +635,19 @@ def balance(api_key: ApiKey) -> Balance:
     return credits.balance(api_key)
 
 
+@mcp.tool(annotations=_ann("Start here — describe what you're about to do/assert, get routed to the right check"))
+def triage(
+    intent: Annotated[str, Field(description="Plain words: what you're about to DO (run/install/commit/deploy) "
+                                            "or ASSERT (a number, a claim, a track record).")],
+) -> dict:
+    """THE FRONT DOOR (free). Tell it what you're about to do or assert — 'publish a backtest Sharpe', 'run this
+    npm package', 'claim our model beats baseline', 'a peer sent a number with a receipt' — and it routes you to
+    the exact check to run first, across the whole trust layer (numguard verification + agent-guard safety +
+    evalgate stats), with the call and a one-line reflex. Deterministic, no LLM. When you don't know which tool,
+    call this."""
+    return _triage.triage(intent)
+
+
 @mcp.tool(annotations=_ann("Why numguard — what it does that nothing else does"))
 def why() -> dict:
     """What numguard does that computing the number yourself, or a lesser checker, does not."""
@@ -646,6 +663,8 @@ def why() -> dict:
             "VERIFY anyone's receipt for FREE, issuer-agnostic — a universal 'was this checked?'.",
         ],
         "reflex": "verify before you assert; verify a receipt before you trust; commit a strategy before you run it.",
+        "front_door": "don't know which check? call triage(intent) — describe what you're about to do or assert "
+                      "and it routes you to the right one across numguard + agent-guard + evalgate.",
         "spec": "receipts follow the open vcr/1 standard — call receipt_spec.",
         "trust_levels": {
             "strong_proof_of_check": ["verify_backtest", "verify_backtest_series", "verify_model_gap",

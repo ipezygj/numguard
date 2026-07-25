@@ -544,6 +544,20 @@ def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
     assert detect.scan(flagged)[0]["claim"]["survives"] is False
 
 
+def test_triage_routes_intents_to_the_right_check():
+    """The front door: a plain-words intent routes to the correct tool across all three products, deterministic,
+    and an unknown intent degrades gracefully instead of guessing."""
+    from numguard import triage as T
+    assert T.triage("about to publish a backtest with a Sharpe of 20")["route"]["product"] == "numguard"
+    assert "package" in T.triage("should I run this npm install")["route"]["tool"].lower() or \
+           T.triage("should I run this npm install")["route"]["product"] == "agent-guard"
+    r = T.triage("a peer sent me a number with a receipt, can I trust it")
+    assert "receipt" in r["route"]["tool"].lower()
+    assert T.triage("make this a permanent on-chain credential")["route"]["tool"].startswith("anchor_receipt")
+    none = T.triage("what's the weather")
+    assert none["matched"] is False and none["routes"] == [] and none["reflex"]
+
+
 def test_verify_execution_rederives_and_catches_a_fabricated_sharpe():
     """Verifiable execution: numguard RE-DERIVES the Sharpe from positions on committed data and catches a
     reported number those decisions don't produce; binds to a data hash; rejects a wrong canonical source."""
