@@ -544,6 +544,21 @@ def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
     assert detect.scan(flagged)[0]["claim"]["survives"] is False
 
 
+def test_onchain_verify_apy_gates_and_backing_units():
+    """Kimi-vetted on-chain verifications: vault APY re-derives from smooth price-per-share but REFUSES on a
+    donation spike / too-short history; leaderboard audit only certifies explicit addresses (no ranking)."""
+    from numguard import onchain_verify as OV
+    t0 = 1_700_000_000
+    smooth = [(t0 + i * 86400, 1.0 * (1.12 ** (i / 365.0))) for i in range(0, 31, 3)]
+    r = OV.apy_from_pps(smooth)
+    assert r["survives"] is True and abs(r["realized_apy"] - 0.12) < 0.02
+    spiked = smooth[:5] + [(smooth[5][0], smooth[5][1] * 1.5)] + smooth[6:]
+    assert OV.apy_from_pps(spiked)["survives"] is None           # donation/flash-loan spike -> not signed
+    assert OV.apy_from_pps([(t0, 1.0), (t0 + 100, 1.0)]).get("survives") is None   # too short/few -> not signed
+    assert "error" in OV.audit_addresses([])                     # input validation, no network
+    assert "error" in OV.audit_addresses(["0x" + "1" * 40] * 51) # >50 cap
+
+
 def test_onchain_reconstructs_realized_returns_from_swaps():
     """The auto-fetch rail's core: pair token transfers into swaps and FIFO-match to realized round-trip returns,
     self-contained (prices come from the swaps themselves) — proven without a live key. And verify_agent fails

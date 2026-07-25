@@ -25,18 +25,38 @@ _CHAIN_IDS = {"base": 8453, "base-sepolia": 84532}
 _BLOCKSCOUT = {"base": "https://base.blockscout.com", "base-sepolia": "https://base-sepolia.blockscout.com"}
 
 
+import re as _re
+_ADDR = _re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def valid_address(a: str) -> bool:
+    """A 0x-prefixed 20-byte hex address. Gate BEFORE putting a value into a fetch URL — blocks injection /
+    SSRF-style tricks and garbage that would waste a fetch."""
+    return isinstance(a, str) and bool(_ADDR.match(a.strip()))
+
+
 def _key() -> str:
     return os.environ.get("NUMGUARD_ETHERSCAN_KEY") or os.environ.get("ETHERSCAN_API_KEY", "")
 
 
+_MAX_RESP = 16 * 1024 * 1024   # 16MB cap on any explorer response (DoS guard)
+
+
 def _get(url: str) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 numguard/onchain"})
-    return json.load(urllib.request.urlopen(req, timeout=30))
+    with urllib.request.urlopen(req, timeout=30) as r:
+        raw = r.read(_MAX_RESP + 1)
+    if len(raw) > _MAX_RESP:
+        raise RuntimeError("explorer response too large")
+    return json.loads(raw)
 
 
 def fetch_token_transfers(address: str, chain: str = "base", key: str = "", page_size: int = 1000) -> list:
     """Fetch the wallet's ERC-20 transfers on `chain`. Default source is Blockscout (KEYLESS, covers Base). If an
     Etherscan key is provided it's used as a fallback / for chains Blockscout doesn't serve. Returns raw rows."""
+    if not valid_address(address):
+        raise RuntimeError("invalid wallet address (expected 0x + 40 hex)")
+    page_size = max(1, min(int(page_size), 5000))   # cap the fetch/parse size (DoS guard)
     bs = _BLOCKSCOUT.get(chain)
     if bs:
         try:
