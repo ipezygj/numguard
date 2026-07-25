@@ -29,6 +29,7 @@ Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval s
 | `audit_leaderboard` | *Is #1 on this leaderboard statistically real?* (rank confidence intervals) |
 | **`reconcile_backtest`** | *Did my backtest's claimed Sharpe survive contact with LIVE returns?* (HELD / DECAYED / BROKEN) |
 | **`open_commitment` / `report_returns`** | *Hold my strategy accountable over time — stream live returns, tell me when the edge breaks.* (O(1)/obs) |
+| **`open_precommitment` / `report_precommit`** | *Prove my live claim wasn't cherry-picked after the fact — pre-register it BEFORE the outcome; report on a hash-chained, tamper-evident timeline anyone can audit free (`verify_chain`).* |
 | `issue_receipt` / `commitment_receipt` | *Give me a signed, portable proof this number / track record was checked.* |
 | **`verify_receipt`** | *Was the number this other agent handed me actually checked, and by whom?* (**free, issuer-agnostic**) |
 | **`scan_for_receipts`** | *A peer just sent me a message — find and verify any receipt inside it before I act.* (**free** — the receiver half of the loop) |

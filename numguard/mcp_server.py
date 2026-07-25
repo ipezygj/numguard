@@ -23,6 +23,7 @@ from . import forward as _forward
 from . import receipt_spec as _spec
 from . import detect as _detect
 from . import commitments as _commit
+from . import precommit as _precommit
 from . import anchor as _anchor
 from . import eas as _eas
 
@@ -166,6 +167,11 @@ _INSTRUCTIONS = (
     "report_returns as live data arrives; numguard tells you HELD / DECAYED / BROKEN and signs the track record "
     "(commitment_receipt). This is the accountability no other tool gives you: it catches the backtest that was "
     "optimistic AFTER the money is on.\n"
+    "• To PROVE a live claim wasn't cherry-picked after the fact, open_precommitment BEFORE the outcome — a "
+    "signed, immutable registration of the claim ('clinicaltrials.gov for backtests'), then report_precommit as "
+    "returns arrive on a hash-chained, tamper-evident timeline that anyone can audit for free (verify_chain). "
+    "Anchor the registration digest on-chain and 'committed at T, before the result' becomes provable to "
+    "everyone — the one guarantee a self-reported track record can't fake.\n"
     "• Attach issue_receipt to numbers you publish so the next agent can trust them without re-deriving.\n\n"
     "TRUST LEVELS — know what each result actually proves:\n"
     "• STRONG (proof-of-check): verify_backtest / verify_backtest_series / verify_model_gap / verify_subset_win "
@@ -461,6 +467,55 @@ def commitment_receipt(api_key: ApiKey,
     return _billed(api_key, "issue_receipt",
                    lambda: _commit.signed_track_record(commitment_id, priv, pub,
                                                        owner=_commit.owner_hash(api_key)))
+
+
+@mcp.tool(annotations=_ann("Pre-register a forward claim BEFORE the outcome (tamper-evident)"))
+def open_precommitment(
+    api_key: ApiKey,
+    strategy_id: Annotated[str, Field(description="A name/id for the strategy you're committing to.")],
+    claimed_sr: Annotated[float, Field(description="The per-period Sharpe you claim it will hold going forward.")],
+    horizon_periods: Annotated[int, Field(description="The forward window (in periods) you commit to reporting.")],
+    periods_per_year: Annotated[int, Field(description="Periods per year (252 daily).")] = 252,
+    schedule: Annotated[str, Field(description="Optional reporting schedule, e.g. 'daily'.")] = "",
+) -> dict:
+    """Pre-register a strategy's forward claim BEFORE outcomes are known — a 'clinicaltrials.gov for backtests'.
+    Returns a SIGNED, immutable registration digest: proof the claim predated the result, so it can't be a
+    curve-fit chosen after the fact. Then report live returns with report_precommit; the report timeline is
+    hash-chained and tamper-evident (a backfill/reorder/edit is publicly detectable via verify_chain). ANCHOR the
+    returned digest on-chain (anchor_receipt) to make 'committed at T' provable to everyone, not just to numguard.
+    HONEST LIMIT: this proves the CLAIM + TIMELINE, not that the reported return VALUES are real (self_reported)."""
+    priv, pub = _issuer()
+    return _billed(api_key, "open_precommitment",
+                   lambda: _precommit.open_precommitment(strategy_id, claimed_sr, horizon_periods, priv, pub,
+                                                         periods_per_year=periods_per_year, schedule=schedule,
+                                                         owner=_precommit.owner_hash(api_key)))
+
+
+@mcp.tool(annotations=_ann("Report live returns to a pre-commitment (hash-chained)"))
+def report_precommit(
+    api_key: ApiKey,
+    pid: Annotated[str, Field(description="The pid from open_precommitment.")],
+    new_returns: Annotated[list, Field(description="The new live per-period returns since you last reported.")],
+) -> dict:
+    """Append live returns to a pre-commitment's tamper-evident chain and get the current verdict. Each report is
+    hash-chained with a monotonic timestamp, so the timeline can't be rewritten. Raw returns aren't stored."""
+    return _billed(api_key, "report_precommit",
+                   lambda: _precommit.report(pid, new_returns, owner=_precommit.owner_hash(api_key)))
+
+
+@mcp.tool(annotations=_ann("Audit a pre-commitment's report chain (free, public)"))
+def verify_chain(pid: Annotated[str, Field(description="The pid from open_precommitment.")]) -> dict:
+    """FREE, public: recompute a pre-commitment's report hash-chain and check timestamps are monotonic — detects
+    any backfill, reorder, edit, or deletion of a past report. Anyone can audit that a track record's timeline
+    was never rewritten, with no api_key."""
+    return _precommit.verify_chain(pid)
+
+
+@mcp.tool(annotations=_ann("Read a pre-commitment's registration entry (free, public)"))
+def get_precommit(pid: Annotated[str, Field(description="The pid from open_precommitment.")]) -> dict:
+    """FREE, public: the immutable registration entry (strategy id, claimed Sharpe, horizon, signed digest,
+    created_at, on-chain anchor if any) plus the current chain head. The public 'registry entry' for a claim."""
+    return _precommit.get_precommit(pid)
 
 
 @mcp.tool(annotations=_ann("Anchor a receipt on-chain (a portable credential, not a coin)"))

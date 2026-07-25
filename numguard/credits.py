@@ -32,6 +32,8 @@ PRICES = {
     "reconcile_backtest": 4,      # accountability: did a claimed backtest Sharpe survive LIVE returns?
     "open_commitment": 1,         # open a live-tracked promise (O(1)/observation, constant memory)
     "report_returns": 2,          # fold new live returns into a commitment + current verdict
+    "open_precommitment": 5,      # pre-register a forward claim BEFORE the outcome (signed, tamper-evident) — the novel anti-backfill primitive
+    "report_precommit": 2,        # append a hash-chained, timestamped live report (verify_chain audits it free)
     "anchor_receipt": 50,         # PREMIUM (Tier 2): anchor a receipt digest on-chain — a permanent, timestamped credential (gas + value of permanence)
     "attest_onchain": 100,        # PREMIUM (Tier 2): a composable EAS attestation on Base — queryable on-chain reputation any protocol can read
 }
@@ -49,7 +51,7 @@ TIERS = {
                   "calibrate_judge", "audit_leaderboard", "verify_backtest_series", "reconcile_backtest",
                   "verify_guard_trace", "issue_receipt"],
     "premium_onchain": ["anchor_receipt", "attest_onchain"],
-    "track_record": ["open_commitment", "report_returns"],
+    "track_record": ["open_commitment", "report_returns", "open_precommitment", "report_precommit"],
 }
 FREE_TIER_CALLS = 25          # per key, before any charge — let the agent feel the value first
 
