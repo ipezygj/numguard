@@ -20,22 +20,37 @@ import urllib.request
 
 _ETHERSCAN_V2 = "https://api.etherscan.io/v2/api"
 _CHAIN_IDS = {"base": 8453, "base-sepolia": 84532}
+# Blockscout: an open, KEYLESS, Etherscan-compatible explorer API — the default for Base (free Etherscan keys do
+# NOT cover Base on the v2 API). So numguard fetches Base on-chain data with no key at all.
+_BLOCKSCOUT = {"base": "https://base.blockscout.com", "base-sepolia": "https://base-sepolia.blockscout.com"}
 
 
 def _key() -> str:
     return os.environ.get("NUMGUARD_ETHERSCAN_KEY") or os.environ.get("ETHERSCAN_API_KEY", "")
 
 
+def _get(url: str) -> dict:
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 numguard/onchain"})
+    return json.load(urllib.request.urlopen(req, timeout=30))
+
+
 def fetch_token_transfers(address: str, chain: str = "base", key: str = "", page_size: int = 1000) -> list:
-    """Fetch the wallet's ERC-20 transfers on `chain` via Etherscan-v2 (needs a free key). Returns raw rows."""
+    """Fetch the wallet's ERC-20 transfers on `chain`. Default source is Blockscout (KEYLESS, covers Base). If an
+    Etherscan key is provided it's used as a fallback / for chains Blockscout doesn't serve. Returns raw rows."""
+    bs = _BLOCKSCOUT.get(chain)
+    if bs:
+        try:
+            data = _get(f"{bs}/api?module=account&action=tokentx&address={address}&page=1&offset={page_size}&sort=asc")
+            if isinstance(data.get("result"), list):
+                return data["result"]
+        except Exception:
+            pass   # fall through to Etherscan if Blockscout is down
     key = key or _key()
     if not key:
-        raise RuntimeError("no Etherscan key — set NUMGUARD_ETHERSCAN_KEY (free at etherscan.io) for live fetch")
+        raise RuntimeError(f"could not fetch {chain} transfers (Blockscout unavailable and no Etherscan key set)")
     cid = _CHAIN_IDS.get(chain, 8453)
-    url = (f"{_ETHERSCAN_V2}?chainid={cid}&module=account&action=tokentx&address={address}"
-           f"&page=1&offset={page_size}&sort=asc&apikey={key}")
-    req = urllib.request.Request(url, headers={"User-Agent": "numguard/onchain"})
-    data = json.load(urllib.request.urlopen(req, timeout=30))
+    data = _get(f"{_ETHERSCAN_V2}?chainid={cid}&module=account&action=tokentx&address={address}"
+                f"&page=1&offset={page_size}&sort=asc&apikey={key}")
     if str(data.get("status")) != "1" and not isinstance(data.get("result"), list):
         raise RuntimeError(f"etherscan: {data.get('message')} {str(data.get('result'))[:120]}")
     return data.get("result", [])

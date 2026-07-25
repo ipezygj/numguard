@@ -561,7 +561,8 @@ def test_onchain_reconstructs_realized_returns_from_swaps():
     rets = OC.realized_returns(swaps)
     assert len(rets) == 1 and abs(rets[0] - 0.30) < 1e-9
     with pytest.raises(RuntimeError):
-        OC.fetch_token_transfers("0xabc", key="")     # no key -> clear error, never a silent empty result
+        # a chain with no keyless Blockscout source AND no key -> clear error, never a silent empty result
+        OC.fetch_token_transfers("0xabc", chain="nonexistent-chain", key="")
 
 
 def test_arena_pipeline_rederives_deflates_signs_and_builds_onchain_call():
