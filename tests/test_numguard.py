@@ -544,6 +544,18 @@ def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
     assert detect.scan(flagged)[0]["claim"]["survives"] is False
 
 
+def test_erc8004_maps_receipt_to_reputation_feedback():
+    """Join the ERC-8004 infra: a numguard receipt maps onto Reputation Registry giveFeedback args — verified->+1,
+    flagged->-1, with the full receipt linked by uri+hash for independent verification."""
+    from numguard import erc8004 as E
+    good = issue_receipt({"kind": "backtest", "survives": True, "verdict": "survives"}, *keypair())
+    f = E.to_feedback(good, agent_id=7, uri_base="https://x.io")
+    assert f["value"] == 1 and f["agent_id"] == 7 and f["hash"] == "0x" + good["digest"]
+    assert f["uri"] == "https://x.io/receipts/" + good["digest"] and "verified" in f["tags"]
+    bad = issue_receipt({"kind": "backtest", "survives": False, "verdict": "overfit"}, *keypair())
+    assert E.to_feedback(bad, agent_id=7)["value"] == -1
+
+
 def test_triage_routes_intents_to_the_right_check():
     """The front door: a plain-words intent routes to the correct tool across all three products, deterministic,
     and an unknown intent degrades gracefully instead of guessing."""
