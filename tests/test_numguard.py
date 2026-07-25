@@ -544,6 +544,26 @@ def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
     assert detect.scan(flagged)[0]["claim"]["survives"] is False
 
 
+def test_onchain_reconstructs_realized_returns_from_swaps():
+    """The auto-fetch rail's core: pair token transfers into swaps and FIFO-match to realized round-trip returns,
+    self-contained (prices come from the swaps themselves) — proven without a live key. And verify_agent fails
+    with a CLEAR message when no Etherscan key is configured (never silently)."""
+    import pytest
+    from numguard import onchain as OC
+    def x(h, ts, frm, to, sym, val):
+        return {"hash": h, "timeStamp": str(ts), "from": frm, "to": to, "tokenSymbol": sym,
+                "value": str(int(val * 10 ** 18)), "tokenDecimal": "18"}
+    W, U = "0xW", "0xU"
+    tr = [x("h1", 1, W, U, "USDC", 100), x("h1", 1, U, W, "TKN", 100),   # buy 100 @1.0
+          x("h2", 2, W, U, "TKN", 100),  x("h2", 2, U, W, "USDC", 130)]  # sell 100 @1.3 -> +30%
+    swaps = OC.parse_swaps(tr, W)
+    assert len(swaps) == 2
+    rets = OC.realized_returns(swaps)
+    assert len(rets) == 1 and abs(rets[0] - 0.30) < 1e-9
+    with pytest.raises(RuntimeError):
+        OC.fetch_token_transfers("0xabc", key="")     # no key -> clear error, never a silent empty result
+
+
 def test_arena_pipeline_rederives_deflates_signs_and_builds_onchain_call():
     """The Arena demo pipeline end-to-end: re-derive a Sharpe from trades, deflate for the N-agent field, sign a
     receipt that verifies offline, and build the exact ERC-8004 giveFeedback calldata — one composed flow."""

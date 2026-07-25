@@ -30,6 +30,7 @@ PRICES = {
     "verify_guard_trace": 3,  # recompute an agent action-trace's behavioural-guard verdict + sign it
     "verify_backtest_series": 5,  # full integrity battery on the returns series (leakage/HAC/PBO/DD/…)
     "verify_execution": 5,        # RE-DERIVE the Sharpe from positions on committed data (don't trust it reported)
+    "verify_agent": 8,            # AUTO-FETCH an on-chain agent's public trades + re-derive its Sharpe (the wired path)
     "reconcile_backtest": 4,      # accountability: did a claimed backtest Sharpe survive LIVE returns?
     "open_commitment": 1,         # open a live-tracked promise (O(1)/observation, constant memory)
     "report_returns": 2,          # fold new live returns into a commitment + current verdict
@@ -50,7 +51,7 @@ TIERS = {
     "free":      ["verify_receipt", "scan_for_receipts", "receipt_spec", "why"],
     "per_check": ["verify_backtest", "verify_subset_win", "verify_model_gap", "verify_judge_bias",
                   "calibrate_judge", "audit_leaderboard", "verify_backtest_series", "verify_execution",
-                  "reconcile_backtest", "verify_guard_trace", "issue_receipt"],
+                  "verify_agent", "reconcile_backtest", "verify_guard_trace", "issue_receipt"],
     "premium_onchain": ["anchor_receipt", "attest_onchain"],
     "track_record": ["open_commitment", "report_returns", "open_precommitment", "report_precommit"],
 }
