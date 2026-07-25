@@ -648,6 +648,19 @@ def triage(
     return _triage.triage(intent)
 
 
+@mcp.tool(annotations=_ann("Map a receipt to an ERC-8004 reputation-registry feedback signal (free)"))
+def erc8004_feedback(
+    receipt: Annotated[dict, Field(description="A numguard vcr/1 receipt to publish as agent reputation.")],
+    agent_id: Annotated[int, Field(description="The ERC-8004 agentId (subject) the verdict is ABOUT.")],
+) -> dict:
+    """FREE: map a numguard verdict onto ERC-8004 Reputation Registry `giveFeedback` args, so a verified claim
+    becomes portable on-chain agent reputation in the standard (live on Base + 40 chains). Returns the call
+    shape (value/tags/uri/hash); posting to the registry is the caller's on-chain step. numguard joins the
+    trustless-agents infra as a reputation provider — the receipt stays independently verifiable off-chain."""
+    from . import erc8004 as _erc
+    return _erc.to_feedback(receipt, agent_id, uri_base=os.environ.get("PUBLIC_URL", "https://numguard-4x7u.onrender.com"))
+
+
 @mcp.tool(annotations=_ann("Why numguard — what it does that nothing else does"))
 def why() -> dict:
     """What numguard does that computing the number yourself, or a lesser checker, does not."""
