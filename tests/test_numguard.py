@@ -550,10 +550,13 @@ def test_erc8004_maps_receipt_to_reputation_feedback():
     from numguard import erc8004 as E
     good = issue_receipt({"kind": "backtest", "survives": True, "verdict": "survives"}, *keypair())
     f = E.to_feedback(good, agent_id=7, uri_base="https://x.io")
-    assert f["value"] == 1 and f["agent_id"] == 7 and f["hash"] == "0x" + good["digest"]
-    assert f["uri"] == "https://x.io/receipts/" + good["digest"] and "verified" in f["tags"]
+    assert f["value"] == 1 and f["agentId"] == 7 and f["feedbackHash"] == "0x" + good["digest"]
+    assert f["feedbackURI"] == "https://x.io/receipts/" + good["digest"] and f["tag2"] == "verified:backtest"
     bad = issue_receipt({"kind": "backtest", "survives": False, "verdict": "overfit"}, *keypair())
     assert E.to_feedback(bad, agent_id=7)["value"] == -1
+    # exact-ABI calldata builds offline against the real Base Reputation Registry
+    d = E.post_feedback(good, 7, network="base", dry_run=True)
+    assert d["registry"] == E.REPUTATION_REGISTRY["base"] and d["calldata"].startswith("0x")
 
 
 def test_triage_routes_intents_to_the_right_check():
