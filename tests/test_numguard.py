@@ -544,6 +544,24 @@ def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
     assert detect.scan(flagged)[0]["claim"]["survives"] is False
 
 
+def test_arena_pipeline_rederives_deflates_signs_and_builds_onchain_call():
+    """The Arena demo pipeline end-to-end: re-derive a Sharpe from trades, deflate for the N-agent field, sign a
+    receipt that verifies offline, and build the exact ERC-8004 giveFeedback calldata — one composed flow."""
+    import random
+    from numguard import execute as ex, backtest as bt, erc8004 as E, receipt_spec as S
+    rng = random.Random(20260505)
+    aret = [rng.gauss(0.0007, 0.02) for _ in range(365)]
+    pos = [0.0] + [(1.0 if aret[t - 1] > 0 else -1.0) for t in range(1, 365)]
+    reported = bt.sharpe(ex.reprice(pos, aret)) * (252 ** 0.5)
+    v = ex.verify_execution(pos, aret, reported_sharpe=reported, n_trials=64)
+    assert v["matches_reported"] is True                      # re-derived == reported (number is reconstructible)
+    assert v["deflated_survives"] is False                    # but a best-of-64 arena winner is inside the noise
+    rc = issue_receipt({"kind": "arena_track_record", "survives": False, "verdict": "deflated below bar"}, *keypair())
+    assert S.verify_any(rc)["valid"]
+    fb = E.post_feedback(rc, 1734, network="base", dry_run=True)
+    assert fb["registry"] == E.REPUTATION_REGISTRY["base"] and fb["calldata"].startswith("0x")
+
+
 def test_erc8004_maps_receipt_to_reputation_feedback():
     """Join the ERC-8004 infra: a numguard receipt maps onto Reputation Registry giveFeedback args — verified->+1,
     flagged->-1, with the full receipt linked by uri+hash for independent verification."""
