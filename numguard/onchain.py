@@ -121,6 +121,35 @@ def realized_returns(swaps: list, quote: str = "") -> list:
     return rets
 
 
+def track_record_metrics(rets: list) -> dict:
+    """The full public track-record metrics agents advertise — re-derived from the realized round-trips (win
+    rate, profit factor, max drawdown, Calmar). All from the same on-chain data, no self-report."""
+    n = len(rets)
+    if n == 0:
+        return {}
+    wins = [r for r in rets if r > 0]
+    losses = [r for r in rets if r < 0]
+    gross_win = sum(wins)
+    gross_loss = -sum(losses)
+    # equity curve (compounded) → max drawdown
+    eq, peak, mdd = 1.0, 1.0, 0.0
+    for r in rets:
+        eq *= (1.0 + r)
+        peak = max(peak, eq)
+        mdd = max(mdd, (peak - eq) / peak if peak > 0 else 0.0)
+    total_return = eq - 1.0
+    return {
+        "round_trips": n,
+        "win_rate": round(len(wins) / n, 4),
+        "profit_factor": round(gross_win / gross_loss, 3) if gross_loss > 0 else None,
+        "avg_return": round(sum(rets) / n, 4),
+        "total_return": round(total_return, 4),
+        "max_drawdown": round(mdd, 4),
+        "calmar": round(total_return / mdd, 3) if mdd > 0 else None,
+        "best": round(max(rets), 4), "worst": round(min(rets), 4),
+    }
+
+
 def verify_agent(address: str, agent_id: int = 0, *, chain: str = "base", arena_size: int = 1,
                  key: str = "") -> dict:
     """ONE CALL: fetch the agent's public trades -> realized returns -> Deflated-Sharpe (deflated for an
@@ -136,10 +165,24 @@ def verify_agent(address: str, agent_id: int = 0, *, chain: str = "base", arena_
         out["verdict"] = f"too few realized round-trips ({len(rets)}) to judge — need >= 8"
         out["survives"] = None
         return out
+    # DATA-QUALITY GATE (measured, not believed — applied to our own reconstruction). Absurd round-trips
+    # (>1000% or ~total loss) are almost always artifacts: token-decimal mismatches, memecoin price ratios,
+    # scam-token swaps, or FIFO mispairing — NOT real spot returns. If the series is contaminated, REFUSE to
+    # report a Sharpe rather than sign a number built on garbage.
+    outliers = [r for r in rets if r > 10.0 or r <= -0.999]
+    if len(outliers) > max(1, 0.05 * len(rets)):
+        out.update({"survives": None, "data_source": "public_onchain", "reconstruction": "unreliable",
+                    "outlier_round_trips": len(outliers),
+                    "verdict": f"reconstruction UNRELIABLE — {len(outliers)}/{len(rets)} round-trips show extreme "
+                               f"returns (>1000% or total loss), i.e. token-decimal/memecoin/parsing artifacts, "
+                               f"not clean spot trades. Won't sign a Sharpe on contaminated data; needs the "
+                               f"agent's own accounting or a cleaner venue."})
+        return out
     per = _bt.sharpe(rets)
     v = _bt.deflated_sharpe(sr=per, T=len(rets), n_trials=max(1, arena_size))
     out.update({"realized_sharpe": round(per, 4), "deflated_sharpe": round(v.dsr, 4),
                 "survives": bool(v.survives), "data_source": "public_onchain",
+                "metrics": track_record_metrics(rets),   # the FULL public track record, re-derived on-chain
                 "verdict": f"realized SR {per:+.3f} over {len(rets)} on-chain round-trips; DSR {v.dsr:.3f} "
                            f"(deflated for {arena_size} agents)"})
     from numguard import keypair as _kp
