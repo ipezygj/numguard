@@ -440,6 +440,24 @@ def verify_execution(
                                                      n_trials=n_trials, canonical_hash=canonical_hash))
 
 
+@mcp.tool(annotations=_ann("Auto-fetch an on-chain agent's public trades and re-derive its Sharpe (one call)"))
+def verify_agent(
+    api_key: ApiKey,
+    address: Annotated[str, Field(description="The trading agent's wallet address (its trades are public).")],
+    agent_id: Annotated[int, Field(description="Optional ERC-8004 agentId to also build a reputation-post shape.")] = 0,
+    chain: Annotated[str, Field(description="Chain (default 'base').")] = "base",
+    arena_size: Annotated[int, Field(description="How many agents it competed against (deflates for best-of-N).")] = 1,
+) -> dict:
+    """THE WIRED PATH: given a wallet address, numguard FETCHES the agent's public on-chain trades itself, pairs
+    them into swaps, FIFO-matches to realized round-trip returns (prices come from the swaps — no oracle),
+    re-derives the Sharpe, deflates it for the arena field, and returns the verdict + a signed-receipt digest +
+    the ERC-8004 giveFeedback shape. Operator-independent (the data is public), one call. Needs a free Etherscan
+    key (NUMGUARD_ETHERSCAN_KEY) for the live fetch — errors clearly without one."""
+    from . import onchain as _oc
+    return _billed(api_key, "verify_agent",
+                   lambda: _oc.verify_agent(address, agent_id=agent_id, chain=chain, arena_size=arena_size))
+
+
 @mcp.tool(annotations=_ann("Reconcile a claimed backtest against LIVE returns"))
 def reconcile_backtest(
     api_key: ApiKey,
