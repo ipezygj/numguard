@@ -20,6 +20,7 @@ from starlette.routing import Route
 from . import claims, judge as _judge, x402, _limits, identity, transparency, receipt as _rcpt
 from . import backtest_battery as _battery
 from . import receipt_spec as _spec
+from . import execute as _execute
 
 # ---- hardening limits (a public, real-money endpoint) ----
 MAX_ITEMS = _limits.MAX_ITEMS   # cap list/matrix sizes so a huge payload can't pin the CPU
@@ -59,6 +60,9 @@ def _guard_body(tool: str, body: dict) -> None:
                 _limits.check_list(nm, body.get(nm))
     if tool == "reconcile_backtest":
         _limits.check_list("realized_returns", body.get("realized_returns"))
+    if tool == "verify_execution":
+        _limits.check_list("positions", body.get("positions"))
+        _limits.check_list("asset_returns", body.get("asset_returns"))
 
 try:                                   # optional: full leaderboard audit needs the evalgate library
     from evalgate import audit_matrix
@@ -106,6 +110,11 @@ ROUTES = {
     "reconcile_backtest": (0.04, lambda b: claims.verify_claim(
         "forward_check", claimed_sr=b["claimed_sr"], realized_returns=b["realized_returns"],
         periods_per_year=int(b.get("periods_per_year", 252)))),
+    # verifiable execution: re-derive the Sharpe from positions on committed data instead of trusting it reported
+    "verify_execution": (0.05, lambda b: _execute.verify_execution(
+        b["positions"], b["asset_returns"], reported_sharpe=b.get("reported_sharpe"),
+        cost_bps=float(b.get("cost_bps", 0.0)), periods_per_year=int(b.get("periods_per_year", 252)),
+        n_trials=int(b.get("n_trials", 1)), canonical_hash=b.get("canonical_hash", ""))),
 }
 
 

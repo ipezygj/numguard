@@ -24,6 +24,7 @@ from . import receipt_spec as _spec
 from . import detect as _detect
 from . import commitments as _commit
 from . import precommit as _precommit
+from . import execute as _execute
 from . import anchor as _anchor
 from . import eas as _eas
 
@@ -177,6 +178,9 @@ _INSTRUCTIONS = (
     "• STRONG (proof-of-check): verify_backtest / verify_backtest_series / verify_model_gap / verify_subset_win "
     "/ verify_judge_bias / calibrate_judge / audit_leaderboard — numguard COMPUTES the check from your inputs; "
     "the receipt proves the number was checked, with no trust in anyone's honesty.\n"
+    "• STRONGEST (re-derived): verify_execution — numguard RE-DERIVES the Sharpe from your positions applied to a "
+    "hash-committed price series, so a reported number these decisions don't produce is caught. It removes trust "
+    "in the reported figure itself (though not that the data is real or the fit is out-of-sample).\n"
     "• WEAKER (self-reported): reconcile_backtest and the commitment / track-record tools judge the returns YOU "
     "REPORT — a consistency check against your own claim, NOT proof of real-world performance (they carry "
     "data_source=self_reported). Treat a track record as 'consistent with what they reported', not 'this "
@@ -400,6 +404,36 @@ def verify_backtest_series(
                    lambda: _battery.run_battery(returns, positions=positions, asset_returns=asset_returns,
                                                 turnover=turnover, candidates=candidates,
                                                 periods_per_year=periods_per_year))
+
+
+@mcp.tool(annotations=_ann("Re-derive a backtest Sharpe from positions on committed data (don't trust it reported)"))
+def verify_execution(
+    api_key: ApiKey,
+    positions: Annotated[list, Field(description="The strategy's per-period position/signal series (the "
+                                                "decisions).")],
+    asset_returns: Annotated[list, Field(description="The aligned underlying-asset per-period returns (the "
+                                                    "market data the result is bound to).")],
+    reported_sharpe: Annotated[Optional[float], Field(description="The Sharpe the operator claims — checked "
+                                                                 "against the re-derived one.")] = None,
+    cost_bps: Annotated[float, Field(description="Round-trip cost in bps applied to turnover.")] = 0.0,
+    periods_per_year: Annotated[int, Field(description="Periods per year (252 daily).")] = 252,
+    n_trials: Annotated[int, Field(description="How many strategies/params were tried (for the composed DSR).")] = 1,
+    canonical_hash: Annotated[str, Field(description="Optional SHA-256 of a canonical public data source; if "
+                                                    "given, the committed data must match it or it's rejected.")] = "",
+) -> dict:
+    """VERIFIABLE EXECUTION — instead of trusting a reported Sharpe, numguard RE-DERIVES it: it reconstructs the
+    P&L from your positions applied to the committed asset returns (r_t = pos_{t-1}·assetret_t − costs),
+    recomputes the Sharpe from that, and checks it matches what you claimed — catching a number that these
+    decisions on this data do not actually produce. Binds the result to a data hash, and composes a Deflated
+    Sharpe on the re-derived series. HONEST SCOPE: proves the number is reconstructible from decisions-on-
+    committed-data, NOT that the data is the real market (pass canonical_hash to assert that) or that the
+    positions weren't overfit (that's Deflated Sharpe / PBO). It does not run your strategy code."""
+    _limits.check_list("positions", positions)
+    _limits.check_list("asset_returns", asset_returns)
+    return _billed(api_key, "verify_execution",
+                   lambda: _execute.verify_execution(positions, asset_returns, reported_sharpe=reported_sharpe,
+                                                     cost_bps=cost_bps, periods_per_year=periods_per_year,
+                                                     n_trials=n_trials, canonical_hash=canonical_hash))
 
 
 @mcp.tool(annotations=_ann("Reconcile a claimed backtest against LIVE returns"))

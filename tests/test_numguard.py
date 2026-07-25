@@ -544,6 +544,24 @@ def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
     assert detect.scan(flagged)[0]["claim"]["survives"] is False
 
 
+def test_verify_execution_rederives_and_catches_a_fabricated_sharpe():
+    """Verifiable execution: numguard RE-DERIVES the Sharpe from positions on committed data and catches a
+    reported number those decisions don't produce; binds to a data hash; rejects a wrong canonical source."""
+    import random
+    from numguard import execute as ex, backtest as bt
+    rng = random.Random(2)
+    aret = [rng.gauss(0.0005, 0.01) for _ in range(300)]
+    pos = [0.0] + [(1.0 if aret[t - 1] > 0 else -1.0) for t in range(1, 300)]
+    true_sr = bt.sharpe(ex.reprice(pos, aret)) * (252 ** 0.5)
+    ok = ex.verify_execution(pos, aret, reported_sharpe=true_sr)
+    assert ok["matches_reported"] and ok["survives"] and len(ok["data_hash"]) == 64
+    caught = ex.verify_execution(pos, aret, reported_sharpe=true_sr + 3.0)   # a number these decisions don't make
+    assert caught["survives"] is False and caught["matches_reported"] is False
+    rej = ex.verify_execution(pos, aret, reported_sharpe=true_sr, canonical_hash="00" * 32)  # wrong data source
+    assert rej["survives"] is False and "canonical" in rej["verdict"]
+    assert ok["does_not_prove"] and ok["attests"]                            # honest scope stated
+
+
 def test_precommit_is_tamper_evident_and_committed_before_outcome(tmp_path, monkeypatch):
     """The novel anti-backfill primitive: a forward claim is pre-registered with a SIGNED, stable digest before
     outcomes; each report is hash-chained with monotonic time; any edit/reorder of a past report is publicly
