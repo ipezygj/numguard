@@ -86,7 +86,8 @@ def parse_swaps(transfers: list, wallet: str) -> list:
 
 
 # Stable/quote symbols treated as "cash" — a swap OUT of cash INTO a token = a BUY; the reverse = a SELL.
-_QUOTES = {"USDC", "USDT", "DAI", "USDBC", "WETH", "ETH"}
+# Covers the major Base pairing assets so an agent's round-trips are captured whatever it quotes against.
+_QUOTES = {"USDC", "USDT", "DAI", "USDBC", "USDBC", "EURC", "WETH", "ETH", "CBETH", "CBBTC", "VIRTUAL", "AERO"}
 
 
 def realized_returns(swaps: list, quote: str = "") -> list:
@@ -169,7 +170,7 @@ def _selftest():
     rets = realized_returns(swaps)
     assert len(rets) == 2 and abs(rets[0] - 0.5) < 1e-9 and abs(rets[1] + 0.2) < 1e-9, rets
     print(f"onchain selftest: OK (paired {len(swaps)} swaps, FIFO realized returns {['%+.0f%%'%(r*100) for r in rets]}; "
-          f"live fetch needs a free Etherscan key)")
+          f"live Base fetch is keyless via Blockscout)")
 
 
 if __name__ == "__main__":
