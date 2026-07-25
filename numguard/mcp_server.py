@@ -458,6 +458,55 @@ def verify_agent(
                    lambda: _oc.verify_agent(address, agent_id=agent_id, chain=chain, arena_size=arena_size))
 
 
+@mcp.tool(annotations=_ann("Re-derive a vault's realized APY from on-chain price-per-share (gated)"))
+def verify_vault(
+    api_key: ApiKey,
+    vault: Annotated[str, Field(description="The ERC-4626 vault contract address.")],
+    chain: Annotated[str, Field(description="Chain (default 'base').")] = "base",
+) -> dict:
+    """Fetch a vault's price-per-share history from its own Deposit/Withdraw events and RE-DERIVE its realized
+    APY — no self-report. REFUSES to sign (survives=None, reconstruction='unreliable') if a single-step
+    price jump looks like a donation/flash-loan attack, if the history is too short, or if the APY is outside a
+    sane band (decimals/oracle artifact). Keyless on Base."""
+    from . import onchain_verify as _ov
+    return _billed(api_key, "verify_vault", lambda: _ov.verify_vault(vault, chain=chain))
+
+
+@mcp.tool(annotations=_ann("Re-derive a token's backing ratio from on-chain reserves vs supply (units)"))
+def verify_backing(
+    api_key: ApiKey,
+    token: Annotated[str, Field(description="The token whose backing you're verifying.")],
+    reserve_asset: Annotated[str, Field(description="The reserve asset contract (e.g. USDC).")],
+    reserve_holders: Annotated[list, Field(description="Addresses holding the reserves.")],
+    token_decimals: Annotated[int, Field(description="Decimals of the token.")] = 18,
+    reserve_decimals: Annotated[int, Field(description="Decimals of the reserve asset.")] = 6,
+    chain: Annotated[str, Field(description="Chain (default 'base').")] = "base",
+) -> dict:
+    """Re-derive a backing ratio = (reserve asset held across reserve_holders) / (token totalSupply), in ASSET
+    UNITS — deliberately NOT converted to USD (that needs a price oracle = a lie surface). HONEST: it's a single
+    snapshot (flash-loanable for one block); the verdict says so. Keyless on Base."""
+    from . import onchain_verify as _ov
+    return _billed(api_key, "verify_backing",
+                   lambda: _ov.verify_backing(token, reserve_asset, list(reserve_holders),
+                                              token_decimals=token_decimals, reserve_decimals=reserve_decimals,
+                                              chain=chain))
+
+
+@mcp.tool(annotations=_ann("Audit many addresses' on-chain track records (explicit list, no ranking)"))
+def audit_addresses(
+    api_key: ApiKey,
+    addresses: Annotated[list, Field(description="Explicit wallet addresses to audit (max 50).")],
+    chain: Annotated[str, Field(description="Chain (default 'base').")] = "base",
+    arena_size: Annotated[int, Field(description="Field size to deflate each Sharpe against.")] = 1,
+) -> dict:
+    """Run verify_agent across an EXPLICIT address list and return each verdict. HONEST: only the addresses you
+    give — no discovery, no ranking implied, survivorship NOT controlled (an agent can hide losing wallets). It
+    certifies each address's number, never 'the best agent'."""
+    from . import onchain_verify as _ov
+    return _billed(api_key, "audit_addresses",
+                   lambda: _ov.audit_addresses(list(addresses), chain=chain, arena_size=arena_size))
+
+
 @mcp.tool(annotations=_ann("Reconcile a claimed backtest against LIVE returns"))
 def reconcile_backtest(
     api_key: ApiKey,
