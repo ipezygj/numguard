@@ -79,14 +79,18 @@ def vault_pps_samples(vault: str, chain: str = "base", page_size: int = 1000) ->
     rows = data.get("result") or []
     out = []
     for r in rows[:page_size]:
-        d = (r.get("data") or "0x")[2:]
-        if len(d) < 128:
+        try:                                   # one malformed event must not abort the whole verification
+            d = (r.get("data") or "0x")[2:]
+            if len(d) < 128:
+                continue
+            assets = int(d[0:64], 16)
+            shares = int(d[64:128], 16)
+            tsr = str(r.get("timeStamp", ""))
+            ts = int(tsr, 16) if tsr.startswith("0x") else int(tsr or 0)
+            if shares > 0:
+                out.append((ts, assets / shares))
+        except (ValueError, TypeError):
             continue
-        assets = int(d[0:64], 16)
-        shares = int(d[64:128], 16)
-        ts = int(r.get("timeStamp", "0x0"), 16) if str(r.get("timeStamp", "")).startswith("0x") else int(r.get("timeStamp") or 0)
-        if shares > 0:
-            out.append((ts, assets / shares))
     return out
 
 
