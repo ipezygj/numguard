@@ -17,6 +17,7 @@ specific agent's public track record (from the Virtuals API or its on-chain fill
 its ERC-8004 identity. The code path is identical; only the input changes.
 """
 import random
+import sys
 
 from numguard import execute as ex, backtest as bt, issue_receipt, keypair, erc8004
 
@@ -32,7 +33,21 @@ def load_agent_series():
     return positions, asset_returns, arena_size, reported
 
 
+def verify_real(address: str):
+    """REAL mode: pass a wallet address and numguard fetches its public on-chain trades and verifies them.
+    `python examples/arena_verify.py 0x<address>` — no key needed (keyless via Blockscout on Base)."""
+    from numguard import onchain as oc
+    r = oc.verify_agent(address, agent_id=0, chain="base", arena_size=32)
+    print(f"== REAL on-chain verification of {address} ==")
+    for k in ("round_trips", "realized_sharpe", "deflated_sharpe", "survives", "verdict", "receipt_digest"):
+        if k in r:
+            print(f"  {k}: {r[k]}")
+    print("\n(fetched + re-derived from the wallet's actual public trades — operator-independent, no self-report)")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1].startswith("0x"):
+        return verify_real(sys.argv[1])
     positions, asset_returns, arena_size, reported = load_agent_series()
     agent_id = 1734                                     # e.g. an ERC-8004 agentId (illustrative)
     print("== Verifying a trading-agent track record (ILLUSTRATIVE data — the method, not a real agent) ==\n")
