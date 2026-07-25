@@ -62,7 +62,7 @@ ROUTES = [
     ("pkg", "agent-guard", "check_package",
      "About to install/import a package — is it malware / a typosquat?",
      "check_package(name, ecosystem)  [pip install agent-tripwire]",
-     ["install package", "npm install", "pip install", "add dependency", "import package", "typosquat", "malware", "supply chain"]),
+     ["install package", "npm install", "pip install", "add dependency", "import package", "typosquat", "malware", "supply chain", "npm", "package", "dependency", "install this"]),
     ("cmd", "agent-guard", "check_command",
      "About to run a shell command — is it destructive (rm -rf, curl|bash)?",
      "check_command(cmd)  [pip install agent-tripwire]",
