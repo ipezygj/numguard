@@ -42,10 +42,19 @@ def _key() -> str:
 _MAX_RESP = 16 * 1024 * 1024   # 16MB cap on any explorer response (DoS guard)
 
 
+def redact(s: str) -> str:
+    """Strip any apikey value from a string before it's returned/logged — the Etherscan fallback URL carries the
+    key, and a urllib exception can echo the full URL. Never leak NUMGUARD_ETHERSCAN_KEY in an error message."""
+    return _re.sub(r"(apikey=)[^&\s]+", r"\1<redacted>", str(s))
+
+
 def _get(url: str) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 numguard/onchain"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        raw = r.read(_MAX_RESP + 1)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read(_MAX_RESP + 1)
+    except Exception as e:
+        raise RuntimeError(redact(e))   # never propagate a raw exception that may contain the apikey URL
     if len(raw) > _MAX_RESP:
         raise RuntimeError("explorer response too large")
     return json.loads(raw)
