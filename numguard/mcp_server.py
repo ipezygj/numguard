@@ -653,12 +653,13 @@ def erc8004_feedback(
     receipt: Annotated[dict, Field(description="A numguard vcr/1 receipt to publish as agent reputation.")],
     agent_id: Annotated[int, Field(description="The ERC-8004 agentId (subject) the verdict is ABOUT.")],
 ) -> dict:
-    """FREE: map a numguard verdict onto ERC-8004 Reputation Registry `giveFeedback` args, so a verified claim
-    becomes portable on-chain agent reputation in the standard (live on Base + 40 chains). Returns the call
-    shape (value/tags/uri/hash); posting to the registry is the caller's on-chain step. numguard joins the
-    trustless-agents infra as a reputation provider — the receipt stays independently verifiable off-chain."""
+    """FREE: build the ERC-8004 Reputation Registry `giveFeedback` call from a numguard verdict, so a verified
+    claim becomes portable on-chain agent reputation in the standard (live on Base + 40 chains). Returns the
+    exact args + the ready-to-broadcast calldata against the real Base registry (dry-run; broadcasting is the
+    caller's on-chain step, needs gas). numguard joins the trustless-agents infra as a reputation provider —
+    value is +1/-1, the PROOF is the linked receipt, independently verifiable off-chain for free."""
     from . import erc8004 as _erc
-    return _erc.to_feedback(receipt, agent_id, uri_base=os.environ.get("PUBLIC_URL", "https://numguard-4x7u.onrender.com"))
+    return _erc.post_feedback(receipt, agent_id, dry_run=True)
 
 
 @mcp.tool(annotations=_ann("Why numguard — what it does that nothing else does"))
