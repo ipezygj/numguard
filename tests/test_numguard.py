@@ -544,6 +544,35 @@ def test_emit_sender_stamps_real_refuses_overfit_and_roundtrips():
     assert detect.scan(flagged)[0]["claim"]["survives"] is False
 
 
+def test_precommit_is_tamper_evident_and_committed_before_outcome(tmp_path, monkeypatch):
+    """The novel anti-backfill primitive: a forward claim is pre-registered with a SIGNED, stable digest before
+    outcomes; each report is hash-chained with monotonic time; any edit/reorder of a past report is publicly
+    detectable via the FREE verify_chain; and the registration is owner-bound + verifiable with the public key."""
+    import random
+    from numguard import precommit as pc, receipt_spec as S
+    monkeypatch.setenv("NUMGUARD_PRECOMMITS", str(tmp_path / "pc.db"))
+    pc._STORE = Path(tmp_path / "pc.db"); pc._INIT.clear()
+    priv, pub = keypair()
+    o = pc.open_precommitment("rsi_v1", 0.2, horizon_periods=250, private_hex=priv, public_hex=pub,
+                              owner=pc.owner_hash("me"))
+    pid, digest0 = o["pid"], o["digest"]
+    assert len(digest0) == 64
+    assert S.verify_any(o["receipt"])["valid"]                 # the pre-registration is a verifiable receipt
+    rng = random.Random(1)
+    for _ in range(10):
+        pc.report(pid, [rng.gauss(0.0, 0.012) for _ in range(20)], owner=pc.owner_hash("me"))
+    chk = pc.verify_chain(pid)
+    assert chk["ok"] and chk["reports"] == 10
+    assert pc.get_precommit(pid)["digest"] == digest0          # the claim can't be silently changed after reporting
+    assert "error" in pc.report(pid, [0.1], owner=pc.owner_hash("someone-else"))   # owner-bound
+    # tamper: rewrite one past report → the chain must fail exactly there
+    c = pc._conn()
+    c.execute("UPDATE preport SET returns_digest=? WHERE pid=? AND seq=4", ("00" * 32, pid)); c.commit(); c.close()
+    bad = pc.verify_chain(pid)
+    assert not bad["ok"] and bad["bad_seq"] == 4
+    assert o["data_source"] == "self_reported"                 # honest: proves timeline, not the return values
+
+
 def test_proof_gallery_is_honest_and_verifiable():
     """The dogfood gallery must (a) discriminate — some survive, some flag — and (b) every receipt must verify
     against its own embedded key. Guards against a gallery that only ever rejects, or ships a bad receipt."""

@@ -320,6 +320,23 @@ async def admin_seed(request):
     return JSONResponse({"seeded": len(seeded), "entries": seeded, "head": transparency.head()})
 
 
+async def precommit_verify(request):
+    """FREE, public: audit a pre-commitment's report chain — detect any backfill/reorder/edit of a past report.
+    A reputation you have to pay to inspect is not a reputation."""
+    if (r := _rl_guard(request)) is not None:
+        return r
+    from . import precommit as _pc
+    return JSONResponse(_pc.verify_chain(request.path_params["pid"]))
+
+
+async def precommit_get(request):
+    """FREE, public: the immutable registration entry for a pre-commitment (the public 'registry entry')."""
+    if (r := _rl_guard(request)) is not None:
+        return r
+    from . import precommit as _pc
+    return JSONResponse(_pc.get_precommit(request.path_params["pid"]))
+
+
 async def ledger_status(request):
     # safe diagnostic (no secret values): shows whether the durable Turso backend actually took effect
     return JSONResponse(transparency.config_status())
@@ -331,6 +348,8 @@ routes = [Route("/pricing", pricing), Route("/health", health),
           Route("/receipts", receipts), Route("/receipts/{digest}", receipt_by_digest),
           Route("/verify_receipt", verify_receipt_route, methods=["POST"]),
           Route("/receipt_spec", receipt_spec_route),
+          Route("/precommit/verify/{pid}", precommit_verify),
+          Route("/precommit/{pid}", precommit_get),
           Route("/debug/ledger", ledger_status),
           Route("/admin/seed", admin_seed, methods=["POST"])]
 routes += [Route(f"/{name}", _make(name, price, fn), methods=["POST"]) for name, (price, fn) in ROUTES.items()]
