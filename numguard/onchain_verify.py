@@ -94,13 +94,83 @@ def vault_pps_samples(vault: str, chain: str = "base", page_size: int = 1000) ->
     return out
 
 
+_BASE_RPCS = ["https://mainnet.base.org", "https://base.drpc.org"]
+# price-per-share readers, tried in order (name, args, scale). getPricePerFullShare = Beefy; convertToAssets =
+# ERC-4626 standard (assets returned for 1e18 shares); both give a clean per-share price with no event parsing.
+_PPS_METHODS = [
+    ("getPricePerFullShare", [], 1e18, "uint256"),
+    ("convertToAssets", [10 ** 18], 1e18, "uint256"),
+]
+
+
+def _w3(chain: str):
+    from web3 import Web3
+    urls = _BASE_RPCS if chain == "base" else [os.environ.get("NUMGUARD_RPC", "")]
+    for u in [os.environ.get("NUMGUARD_RPC", "")] + urls:
+        if not u:
+            continue
+        try:
+            w3 = Web3(Web3.HTTPProvider(u, request_kwargs={"timeout": 15, "headers": {"User-Agent": "Mozilla/5.0"}}))
+            _ = w3.eth.block_number
+            return w3
+        except Exception:
+            continue
+    raise RuntimeError("no working RPC for chain " + chain)
+
+
+def vault_pps_via_rpc(vault: str, chain: str = "base", points: int = 14, lookback_blocks: int = 1_200_000) -> list:
+    """Read a vault's price-per-share at `points` historical blocks via eth_call (keyless — public Base RPCs
+    serve historical state) → (ts, pps) samples. Auto-detects the reader method; skips blocks the node pruned.
+    ~1.2M Base blocks ≈ 28 days lookback."""
+    from web3 import Web3
+    if not _oc.valid_address(vault):
+        raise RuntimeError("invalid vault address")
+    w3 = _w3(chain)
+    addr = Web3.to_checksum_address(vault)
+    head = w3.eth.block_number
+    # pick the method that works at latest
+    method = None
+    for name, args, scale, out in _PPS_METHODS:
+        try:
+            abi = [{"name": name, "type": "function", "stateMutability": "view",
+                    "inputs": [{"type": "uint256"}] * len(args), "outputs": [{"type": out}]}]
+            c = w3.eth.contract(address=addr, abi=abi)
+            getattr(c.functions, name)(*args).call()
+            method = (name, args, scale, abi)
+            break
+        except Exception:
+            continue
+    if not method:
+        return []   # not a recognized vault (no pps reader) → caller reports "too few samples"
+    name, args, scale, abi = method
+    c = w3.eth.contract(address=addr, abi=abi)
+    blocks = sorted({head - int(lookback_blocks * i / (points - 1)) for i in range(points)})
+    out = []
+    for b in blocks:
+        try:
+            pps = getattr(c.functions, name)(*args).call(block_identifier=max(1, b)) / scale
+            ts = w3.eth.get_block(max(1, b)).timestamp
+            if pps > 0:
+                out.append((ts, pps))
+        except Exception:
+            continue   # pruned/unavailable historical block — skip, don't abort
+    return out
+
+
 def verify_vault(vault: str, chain: str = "base") -> dict:
-    """Fetch a vault's price-per-share history and re-derive its realized APY, refusing to sign if the series is
-    gamed/artifacted. Never raises."""
+    """Re-derive a vault's realized APY from its on-chain price-per-share history (via eth_call at historical
+    blocks — keyless), refusing to sign if the series is gamed/artifacted. Falls back to Deposit/Withdraw events
+    if RPC reads fail. Never raises."""
+    samples = []
     try:
-        samples = vault_pps_samples(vault, chain=chain)
-    except Exception as e:
-        return {"error": str(e)[:160]}
+        samples = vault_pps_via_rpc(vault, chain=chain)
+    except Exception:
+        samples = []
+    if len(samples) < 3:
+        try:
+            samples = vault_pps_samples(vault, chain=chain)   # event-based fallback
+        except Exception as e:
+            return {"error": str(e)[:160], "vault": vault, "chain": chain}
     r = apy_from_pps(samples)
     r["vault"] = vault
     r["chain"] = chain
