@@ -13,7 +13,7 @@ authors = [{ name = "Ilpo Väätäinen" }]
 keywords = ["agents", "mcp", "eval", "verification", "deflated-sharpe", "backtest", "x402", "llm-judge"]
 
 dependencies = [
-    "mcp>=1.0",              # MCP server + its HTTP/ASGI stack (starlette, uvicorn, httpx, pydantic)
+    "mcp>=1.0,<2",           # 2.0 removed mcp.server.fastmcp, which mcp_server.py imports              # MCP server + its HTTP/ASGI stack (starlette, uvicorn, httpx, pydantic)
 ]
 
 [project.optional-dependencies]
