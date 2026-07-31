@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ipezygj/numguard",
-  "description": "Verify a number before an agent asserts it \u2014 evals, backtests (Deflated Sharpe), signed receipts.",
+  "description": "Verify a number before an agent asserts it — evals, backtests (Deflated Sharpe), signed receipts.",
   "repository": {
     "url": "https://github.com/ipezygj/numguard",
     "source": "github"
   },
-  "version": "0.1.1",
+  "version": "0.1.2",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "numguard",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "transport": {
         "type": "stdio"
       },
