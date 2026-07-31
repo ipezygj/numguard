@@ -23,6 +23,11 @@ leaderboard = ["evalgate"]          # optional: audit_leaderboard tool (install 
 guard = ["agent-tripwire>=0.3"]     # optional: verify_guard_trace tool (behavioural-guard receipts)
 dev = ["pytest>=7"]
 
+[project.urls]
+Homepage = "https://github.com/ipezygj/numguard"
+Source = "https://github.com/ipezygj/numguard"
+Issues = "https://github.com/ipezygj/numguard/issues"
+
 [project.scripts]
 numguard-mcp = "numguard.mcp_server:mcp.run"
 
