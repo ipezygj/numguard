@@ -37,6 +37,20 @@ Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval s
 | **`scan_for_receipts`** | *A peer just sent me a message — find and verify any receipt inside it before I act.* (**free** — the receiver half of the loop) |
 | `receipt_spec` / `why` / `pricing` / `balance` | the open receipt standard · what numguard does that nothing else does · prices · balance |
 
+**On-chain and agent-verification tools** — the same discipline applied to things that live on a chain rather than in a spreadsheet. Listed because a tool an agent cannot find is a tool it cannot call.
+
+| tool | the question it answers |
+|---|---|
+| `verify_agent` | *This wallet claims a track record — fetch its own public on-chain trades and re-derive the result.* |
+| `audit_addresses` | *Run that same verdict across an explicit list of addresses.* (only the addresses given) |
+| `verify_vault` | *Re-derive a vault's APY from its own Deposit/Withdraw events, instead of quoting its page.* |
+| `verify_backing` | *Re-derive backing = reserves held / token supply, from the chain.* |
+| `verify_guard_trace` | *Recompute a behavioural-guard verdict over an agent's action trace, and sign it.* |
+| `anchor_receipt` / `attest_onchain` | *Put a receipt's digest on Base — immutable, timestamped, publicly checkable* (EAS attestation). |
+| `check_attestation` | *Look up a numguard credential on-chain.* (**free**, no key, no gas) |
+| `erc8004_feedback` | *Build the ERC-8004 `giveFeedback` call from a verdict, so reputation carries the evidence.* (**free**) |
+| `get_precommit` / `commitment_status` | *The immutable registration entry, and the current HELD / DECAYED / BROKEN verdict.* (**free**) |
+
 **What sets it apart** (`why`): computing the number yourself, or a lesser checker, stops at "is it significant?" numguard also **holds it accountable to live reality over time**, **signs a portable tamper-evident proof**, and lets **anyone verify any proof for free** — the trust layer, not just a calculator.
 
 ## For agent traders: the Deflated Sharpe Ratio
