@@ -105,7 +105,7 @@ x402.require_payment("verify_backtest", price_usd=0.03, pay_to="0x…")
 ## Run the MCP server
 
 ```bash
-pip install git+https://github.com/ipezygj/numguard
+pip install numguard
 python -m numguard.mcp_server        # stdio MCP server; point your agent/host at it
 ```
 
