@@ -39,6 +39,15 @@ jobs:
         run: python -c "import numguard.mcp_server; print('mcp_server imports OK')"
       - name: Report resolved dependency versions
         run: pip list | grep -Ei "^(mcp|pydantic|starlette) " || true
+      - name: The distribution must build and pass twine check
+        # A packaging break — bad README markup, a file missing from the sdist, invalid
+        # metadata — surfaces only at upload time otherwise, which is the one moment a
+        # release is supposed to be one command.
+        run: |
+          python -m pip install --quiet build twine
+          python -m build
+          python -m twine check dist/*
+
       - name: Run tests
         run: |
           # the import smoke above deliberately used the MINIMAL install (what a user gets);
