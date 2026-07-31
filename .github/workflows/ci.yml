@@ -42,7 +42,9 @@ jobs:
       - name: Run tests
         run: |
           pip install pytest
-          if [ -d tests ]; then pytest -q; else echo "no tests dir"; fi
+          # scope to tests/ — repo scripts named *_test.py are manual tools that pull
+          # optional extras, and pytest would otherwise try to collect them
+          if [ -d tests ]; then pytest -q tests; else echo "no tests dir"; fi
 
   resolve-universal:
     name: uv sync --all-extras (universal resolution)
