@@ -1,0 +1,54 @@
+# Smoke CI — the check that would have caught two real outages.
+#
+# 1. `uv sync --all-extras` resolves dependencies across the WHOLE requires-python
+#    range, not just the active interpreter. A too-wide floor against an extra that
+#    needs a newer Python makes this unsatisfiable — pip never notices, uv does.
+# 2. Importing the MCP server module catches upstream API removals. mcp 2.0 dropped
+#    mcp.server.fastmcp; with an unbounded `mcp>=1.2` every fresh install produced a
+#    server that died at import.
+#
+# The weekly schedule matters more than the push trigger: both failures above came
+# from an upstream release, not from a commit here. Nothing in this repo changed on
+# the day it broke.
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays 06:17 UTC — catch upstream breakage we did not cause
+  workflow_dispatch:
+
+jobs:
+  import-smoke:
+    name: install + import (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install with extras
+        run: pip install "."
+      - name: Import the MCP server (fails if an upstream API disappeared)
+        run: python -c "import numguard.mcp_server; print('mcp_server imports OK')"
+      - name: Report resolved dependency versions
+        run: pip list | grep -Ei "^(mcp|pydantic|starlette) " || true
+      - name: Run tests
+        run: |
+          pip install pytest
+          if [ -d tests ]; then pytest -q; else echo "no tests dir"; fi
+
+  resolve-universal:
+    name: uv sync --all-extras (universal resolution)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Resolve across the full requires-python range
+        run: uv sync --all-extras
