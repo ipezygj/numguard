@@ -18,6 +18,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import claims, judge as _judge, backtest as _bt, credits, receipt as _rcpt, _limits
+from . import fdr as _fdr
 from . import backtest_battery as _battery
 from . import forward as _forward
 from . import receipt_spec as _spec
@@ -44,6 +45,17 @@ class BacktestVerdict(_Out):
     deflation_bar: Optional[Any] = None
     psr_vs_0: Optional[Any] = None
     min_track_record: Optional[Any] = None
+    verdict: Annotated[Optional[Any], Field(None, description="One-line human verdict.")] = None
+
+
+class FdrHurdleVerdict(_Out):
+    hurdle: Annotated[Optional[Any], Field(None, description="The |t| hurdle your own search history implies "
+                                                            "at your target false-discovery rate.")] = None
+    discoveries: Annotated[Optional[Any], Field(None, description="Indices of trials whose |t| clears the hurdle.")] = None
+    t_stats: Optional[Any] = None
+    fdr_at_hurdle: Optional[Any] = None
+    expected_false_at_hurdle: Optional[Any] = None
+    hurdle_ci: Annotated[Optional[Any], Field(None, description="Percentile CI on the hurdle (outer bootstrap), if requested.")] = None
     verdict: Annotated[Optional[Any], Field(None, description="One-line human verdict.")] = None
 
 
@@ -234,6 +246,41 @@ def verify_backtest(
     backtest data before they trust (or publish) it."""
     return _billed(api_key, "verify_backtest",
                    lambda: claims.verify_claim("backtest", sr=sr, T=T, n_trials=n_trials, skew=skew, kurt=kurt))
+
+
+@mcp.tool(annotations=_ann("Data-driven t-hurdle from the FULL trial panel (Harvey-Liu FDR)"))
+def verify_fdr_hurdle(
+    api_key: ApiKey,
+    panel: Annotated[list, Field(description="One per-period return series PER TRIAL your search actually ran "
+                                             "(time-aligned lists) — the winner alone cannot tell you what "
+                                             "your search implies.")],
+    target_fdr: Annotated[float, Field(description="Share of your discoveries you accept being false "
+                                                   "(Harvey & Liu use 0.05).")] = 0.05,
+    n_boot: Annotated[int, Field(description="Bootstrap draws for the null (>=100).")] = 1000,
+    seed: Annotated[int, Field(description="RNG seed — same seed, same verdict.")] = 0,
+    n_outer: Annotated[int, Field(description="Optional outer bootstrap runs for a CI on the hurdle "
+                                              "(0 = off; costly).")] = 0,
+) -> FdrHurdleVerdict:
+    """There is no universal 't > 3': the right hurdle depends on the multiplicity YOU faced and the
+    false-discovery rate YOU accept (Harvey & Liu, Journal of Finance 2020). Backtesters observe that
+    multiplicity — the optimizer logged every trial. Pass the whole panel of trial returns; get back the
+    t-stat hurdle your target FDR implies, which trials clear it, and the expected number of false ones.
+    Complements verify_backtest: DSR deflates the winner, this prices the whole search."""
+    if not isinstance(panel, list) or sum(len(r) for r in panel if hasattr(r, "__len__")) > _limits.MAX_ITEMS:
+        raise ValueError(f"panel too large (> {_limits.MAX_ITEMS} total values)")
+    if int(n_boot) > _limits.MAX_NBOOT:
+        raise ValueError(f"n_boot > {_limits.MAX_NBOOT}")
+    if int(n_outer) > 50:
+        raise ValueError("n_outer > 50 (each outer run repeats the whole procedure)")
+
+    def _run():
+        v = _fdr.fdr_hurdle(panel, target_fdr=target_fdr, n_boot=int(n_boot), seed=int(seed),
+                            n_outer=int(n_outer))
+        return {"hurdle": v.hurdle, "discoveries": v.discoveries, "t_stats": [round(t, 4) for t in v.t_stats],
+                "fdr_at_hurdle": v.fdr_at_hurdle, "expected_false_at_hurdle": v.expected_false_at_hurdle,
+                "target_fdr": v.target_fdr, "m": v.m, "T": v.T, "hurdle_ci": v.hurdle_ci,
+                "note": v.note, "verdict": str(v)}
+    return _billed(api_key, "verify_fdr_hurdle", _run)
 
 
 @mcp.tool(annotations=_ann("Verify a subset/metric win (multiple comparisons)"))

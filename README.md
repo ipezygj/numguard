@@ -22,6 +22,7 @@ Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval s
 |---|---|
 | **`verify_backtest`** | *Is this strategy's Sharpe real, or the luckiest of the many I tried?* (Deflated Sharpe Ratio) |
 | **`verify_backtest_series`** | *Run the full integrity battery on my actual returns — look-ahead, autocorrelation, regime, tail, overfitting.* |
+| **`verify_fdr_hurdle`** | *No universal t>3 — what t-stat hurdle does MY OWN search history imply at MY false-discovery-rate target?* (Harvey & Liu 2020; pass the whole trial panel) |
 | `verify_subset_win` | *Does "we lead on subset X" survive correcting for how many subsets I tested?* |
 | `verify_model_gap` | *Is the gap between these two models bigger than the test set can resolve?* |
 | `verify_judge_bias` | *Is my judge's preference real, or just longer / first / same-family?* |
