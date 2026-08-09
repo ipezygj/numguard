@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from . import claims, judge as _judge, x402, _limits, identity, transparency, receipt as _rcpt
+from . import fdr as _fdr
 from . import backtest_battery as _battery
 from . import receipt_spec as _spec
 from . import execute as _execute
@@ -58,6 +59,14 @@ def _guard_body(tool: str, body: dict) -> None:
         for nm in ("positions", "asset_returns", "turnover"):
             if body.get(nm) is not None:
                 _limits.check_list(nm, body.get(nm))
+    if tool == "verify_fdr_hurdle":
+        panel = body.get("panel")
+        if not isinstance(panel, list) or sum(len(r) for r in panel if hasattr(r, "__len__")) > _limits.MAX_ITEMS:
+            raise ValueError(f"panel must be a list of lists with <= {_limits.MAX_ITEMS} total values")
+        if int(body.get("n_boot", 1000)) > _limits.MAX_NBOOT:
+            raise ValueError(f"n_boot > {_limits.MAX_NBOOT}")
+        if int(body.get("n_outer", 0)) > 50:
+            raise ValueError("n_outer > 50")
     if tool == "reconcile_backtest":
         _limits.check_list("realized_returns", body.get("realized_returns"))
     if tool == "verify_execution":
@@ -90,9 +99,21 @@ def _issue_and_publish(b: dict) -> dict:
     return {"receipt": receipt, "log": {"seq": entry["seq"], "hash": entry["hash"], "prev": entry["prev"]}}
 
 
+def _fdr_hurdle_route(b: dict) -> dict:
+    """Data-driven t-hurdle from the FULL trial panel (Harvey & Liu 2020) — see numguard.fdr."""
+    v = _fdr.fdr_hurdle(b["panel"], target_fdr=float(b.get("target_fdr", 0.05)),
+                        n_boot=int(b.get("n_boot", 1000)), seed=int(b.get("seed", 0)),
+                        n_outer=int(b.get("n_outer", 0)))
+    return {"hurdle": v.hurdle, "discoveries": v.discoveries, "t_stats": [round(t, 4) for t in v.t_stats],
+            "fdr_at_hurdle": v.fdr_at_hurdle, "expected_false_at_hurdle": v.expected_false_at_hurdle,
+            "target_fdr": v.target_fdr, "m": v.m, "T": v.T, "hurdle_ci": v.hurdle_ci,
+            "note": v.note, "verdict": str(v)}
+
+
 # path -> (tool name, price in USD, handler(body)->dict)
 ROUTES = {
     "verify_backtest":   (0.03, lambda b: claims.verify_claim("backtest", **b)),
+    "verify_fdr_hurdle": (0.05, _fdr_hurdle_route),
     "verify_subset_win": (0.02, lambda b: claims.verify_claim("subset_win", **b)),
     "verify_model_gap":  (0.02, lambda b: claims.verify_claim("model_gap", **b)),
     "verify_judge_bias": (0.02, lambda b: claims.verify_claim("judge_bias", **b)),
