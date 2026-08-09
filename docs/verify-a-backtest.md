@@ -67,6 +67,32 @@ if survives("backtest", sr=0.12, T=250, n_trials=100):
     ship_it()                                        # this branch never runs — the number is overfit
 ```
 
+## No universal hurdle: derive yours from your own search history (Harvey & Liu 2020)
+
+A common shortcut is a fixed significance rule ("demand t > 3"). Harvey & Liu, *False (and Missed)
+Discoveries in Financial Economics* (Journal of Finance, 2020), show why that framing is wrong: the right
+hurdle depends on how many trials **you** actually ran and on the false-discovery rate **you** will accept —
+and it can be estimated from your own trials by bootstrap. Backtesting frameworks are one of the few places
+where that multiplicity is *observed rather than guessed*: the optimizer logged every trial.
+
+Feed the whole panel of trial returns (not just the winner) to `fdr_hurdle`:
+
+```python
+from numguard import fdr_hurdle
+
+# panel = one return series per trial your optimizer ran (time-aligned)
+v = fdr_hurdle(panel, target_fdr=0.05)     # "at most 5% of my discoveries may be false"
+print(v)
+# data-driven hurdle |t|>=2.65 at target FDR 5% (m=22 trials, T=200); 2/22 trials clear it; ...
+v.discoveries                              # indices of trials whose |t| clears YOUR hurdle
+```
+
+It demeans every trial (imposing "no skill anywhere"), bootstraps time indices — the same indices across
+trials, preserving cross-trial correlation — and picks the smallest hurdle whose estimated FDR meets your
+target. Deterministic given `seed`; pass `n_outer=200` for a confidence interval on the hurdle itself.
+Honest scope note: it treats all trials as null when counting expected false discoveries (conservative),
+and it needs the *full* panel — the winner alone cannot tell you what your search implies.
+
 ## Beyond one number: the full backtest integrity battery
 
 The Deflated Sharpe still assumes clean, i.i.d.-ish returns. Real backtests fail in ways a single number can't
