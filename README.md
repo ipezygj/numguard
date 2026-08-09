@@ -1,5 +1,22 @@
 # numguard
 
+**The statistics, first.** The data-driven t-stat hurdle of Harvey & Liu, *False (and Missed)
+Discoveries in Financial Economics*, **JF 2020**, is in **[`numguard/fdr.py`](numguard/fdr.py)**:
+demean the trial panel, resample the time index with the same draws for every trial so the
+cross-trial correlation survives, then take the smallest hurdle whose estimated FDR meets your
+target. Its docstring states plainly what it is **not** — a single-bootstrap core, all trials
+treated as null when counting expected false discoveries, and the optional outer bootstrap
+reporting sampling variability of the hurdle rather than the paper's double-bootstrap p-value
+calibration. Tests: **[`tests/test_fdr.py`](tests/test_fdr.py)** — the one worth a minute checks
+the estimator against an analytic value it was never told, `E[#null ≥ h] = m·2(1−Φ(h))`.
+The Deflated Sharpe Ratio lives in [`numguard/backtest.py`](numguard/backtest.py).
+Pure `math` + seeded `random`; no numpy, no scipy. MIT.
+
+*Everything below is the agent-facing packaging of those same checks — an MCP server, signed
+receipts, and metering. The statistics do not depend on any of it.*
+
+---
+
 [![smithery badge](https://smithery.ai/badge/ipezygj2/numguard)](https://smithery.ai/servers/ipezygj2/numguard)
 
 <sub>MCP registry identity — `mcp-name: io.github.ipezygj/numguard`</sub>
@@ -12,19 +29,6 @@ Built on [`evalgate`](https://github.com/ipezygj/evalgate) for the shared eval s
 
 > **New here?** — [How to verify a backtest is real (Deflated Sharpe in Python)](docs/verify-a-backtest.md): the practical guide to catching an overfit or leaking backtest, with runnable code. New in 0.2.0: `fdr_hurdle` — no universal "t > 3"; derive the hurdle your own search history implies at your false-discovery-rate target (Harvey & Liu, *JF* 2020).
 > **See it work** — [proof gallery](docs/PROOF_GALLERY.md): 8 real numbers run through the real checks, 3 survive and 5 are flagged, each with a receipt you can verify offline. Don't trust it — verify it.
-> **Came here for the statistics, not the plumbing?** Start with
-> **[`numguard/fdr.py`](numguard/fdr.py)** — the data-driven t-stat hurdle of Harvey & Liu,
-> *False (and Missed) Discoveries in Financial Economics*, **JF 2020**: demean the trial panel,
-> resample the time index with the same draws for every trial so the cross-trial correlation
-> survives, and take the smallest hurdle whose estimated FDR meets your target. Its docstring
-> states plainly what it is **not** — a single-bootstrap core, all trials treated as null when
-> counting expected false discoveries, and the optional outer bootstrap reporting sampling
-> variability of the hurdle rather than the paper's double-bootstrap p-value calibration.
-> Tests: **[`tests/test_fdr.py`](tests/test_fdr.py)** — the one worth a minute checks the
-> estimator against an analytic value it was never told, `E[#null ≥ h] = m·2(1−Φ(h))`.
-> The Deflated Sharpe Ratio lives in [`numguard/backtest.py`](numguard/backtest.py).
-> Pure `math` + seeded `random`; no numpy, no scipy.
-
 > **Wire it into an agent in one line** — [INTEGRATE.md](docs/INTEGRATE.md): the local reflex, an MCP config, and LangChain / CrewAI tool wrappers.
 
 ---
