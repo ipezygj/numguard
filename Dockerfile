@@ -6,11 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /
 
 COPY pyproject.toml README.md ./
 COPY numguard ./numguard
-# Install numguard + the guard engine (agent-tripwire, from git until 0.3 is on PyPI) so the deployed
-# endpoint can serve verify_guard_trace. It's pure metered compute over caller-supplied traces — no
-# server-file access — so it's safe on the public HTTP transport alongside the other verify tools.
-RUN pip install --no-cache-dir . uvicorn "cryptography>=41" "web3>=6" \
-    "agent-tripwire @ git+https://github.com/ipezygj/agent-guard@master"
+# The guard engine (agent-tripwire >= 0.3, module agent_guard) is NOT installed: its source repo is
+# private and PyPI carries only 0.1.1, which predates session/receipt. verify_guard_trace detects the
+# missing engine at call time and answers with an explanatory verdict instead of a receipt. Restore it
+# by publishing agent-tripwire 0.3 to PyPI or configuring an authenticated build-time install.
+RUN pip install --no-cache-dir . uvicorn "cryptography>=41" "web3>=6"
 
 EXPOSE 8080
 # Bind to the host's $PORT when set (Render/Fly/Heroku assign it), else 8080. Shell form so $PORT expands.
