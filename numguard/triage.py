@@ -61,19 +61,19 @@ ROUTES = [
     # ---- CHECK AN ACTION (agent-guard) ----
     ("pkg", "agent-guard", "check_package",
      "About to install/import a package — is it malware / a typosquat?",
-     "check_package(name, ecosystem)  [pip install agent-tripwire]",
+     "check_package(name, ecosystem)  [needs the agent-guard engine, not on PyPI]",
      ["install package", "npm install", "pip install", "add dependency", "import package", "typosquat", "malware", "supply chain", "npm", "package", "dependency", "install this"]),
     ("cmd", "agent-guard", "check_command",
      "About to run a shell command — is it destructive (rm -rf, curl|bash)?",
-     "check_command(cmd)  [pip install agent-tripwire]",
+     "check_command(cmd)  [needs the agent-guard engine, not on PyPI]",
      ["shell command", "run command", "rm -rf", "curl | bash", "execute", "bash", "destructive command", "sudo"]),
     ("secret", "agent-guard", "scan_secrets",
      "About to commit/paste text — does it leak an API key / token / private key?",
-     "scan_secrets(text)  [pip install agent-tripwire]",
+     "scan_secrets(text)  [needs the agent-guard engine, not on PyPI]",
      ["secret", "api key", "credential", "token leak", "private key", "leak", "commit", ".env", "password"]),
     ("webscan", "agent-guard", "scan_project",
      "About to ship AI-generated backend code — fail-open authz, unsigned webhook, SQLi, hardcoded secret?",
-     "scan_project(path)  [pip install agent-tripwire]",
+     "scan_project(path)  [needs the agent-guard engine, not on PyPI]",
      ["web backend", "api endpoint", "deploy code", "authz", "webhook", "sql injection", "sqli", "backend code", "ship code", "ai-generated code", "auth check"]),
 ]
 

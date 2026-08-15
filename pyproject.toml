@@ -20,7 +20,10 @@ dependencies = [
 receipts = ["cryptography>=41"]     # Ed25519 signed receipts (falls back to HMAC without it)
 settle = ["web3>=6"]                # numguard settles x402 payments on-chain itself (no external facilitator)
 leaderboard = ["evalgate"]          # optional: audit_leaderboard tool (install evalgate from git if not on PyPI)
-guard = ["agent-tripwire>=0.3"]     # optional: verify_guard_trace tool (behavioural-guard receipts)
+# NOTE: there is deliberately no `guard` extra. verify_guard_trace needs the agent-guard
+# engine, whose distribution (agent-tripwire) is not installable from PyPI — its only
+# release is yanked. Declaring `guard = ["agent-tripwire>=0.3"]` made `pip install
+# numguard[guard]` fail for every user and blocked CI from ever reaching the test step.
 dev = ["pytest>=7"]
 
 [project.urls]

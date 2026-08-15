@@ -410,8 +410,10 @@ def verify_guard_trace(
         from agent_guard import receipt as _ag_rcpt
     except Exception:
         return {"payload": None, "signature": None,
-                "verdict": "agent-guard engine not installed on this server. Install `numguard[guard]` "
-                           "(pulls agent-tripwire) to enable guard-trace receipts."}
+                "verdict": "agent-guard engine not installed on this server, and it cannot be "
+                           "installed from PyPI: the agent-tripwire distribution has no "
+                           "unyanked release. Install the engine from source to enable "
+                           "guard-trace receipts."}
     priv, pub = _issuer()
 
     def run():
