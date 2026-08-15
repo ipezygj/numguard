@@ -523,5 +523,163 @@ def _null_pool(panel, T, n_boot, seed):
     return pool
 
 
+def _normal_quantile(p: float) -> float:
+    """Inverse standard normal CDF, by bisection on math.erfc.
+
+    Bisection rather than a rational approximation: it is exact to the tolerance
+    asked for, has no magic constants to mistype, and is called once per run. A
+    package about not trusting numbers should not ship an unchecked polynomial.
+    """
+    if not 0.0 < p < 1.0:
+        raise ValueError("p must be in (0, 1)")
+    lo, hi = -12.0, 12.0
+    for _ in range(200):
+        mid = (lo + hi) / 2.0
+        if 0.5 * math.erfc(-mid / math.sqrt(2.0)) < p:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < 1e-12:
+            break
+    return (lo + hi) / 2.0
+
+
+def _read_panel(path):
+    """Read a CSV of returns: one column per trial, one row per period.
+
+    A header row of names is optional; it is detected by the first row failing to
+    parse as numbers. Ragged rows are rejected rather than padded, because a short
+    column silently becomes a different sample size and the hurdle depends on it.
+    """
+    import csv as _csv
+
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        rows = [r for r in _csv.reader(fh) if any(c.strip() for c in r)]
+    if not rows:
+        raise SystemExit(f"{path}: no data")
+
+    try:
+        [float(c) for c in rows[0]]
+        names = [f"col_{j}" for j in range(len(rows[0]))]
+        body = rows
+    except ValueError:
+        names = [c.strip() for c in rows[0]]
+        body = rows[1:]
+    if not body:
+        raise SystemExit(f"{path}: header but no rows")
+
+    width = len(names)
+    data = []
+    for i, r in enumerate(body, start=2):
+        if len(r) != width:
+            raise SystemExit(f"{path}: row {i} has {len(r)} fields, expected {width}")
+        try:
+            data.append([float(c) for c in r])
+        except ValueError as exc:
+            raise SystemExit(f"{path}: row {i}: {exc}")
+
+    panel = [[data[t][j] for t in range(len(data))] for j in range(width)]
+    return names, panel
+
+
+def _read_truth(path):
+    if not path:
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return {ln.strip() for ln in fh
+                if ln.strip() and not ln.lstrip().startswith("#")}
+
+
+def _score(names, t_stats, hurdle, truth):
+    """Return (found, missed, false_positives) against a known ground truth."""
+    picked = {n for n, t in zip(names, t_stats) if abs(t) >= hurdle}
+    return (sorted(picked & truth), sorted(truth - picked), sorted(picked - truth))
+
+
+def _cli(argv=None):
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        prog="python -m numguard.fdr",
+        description="The t-stat hurdle your search history implies, from a CSV of "
+                    "returns (one column per strategy you tried).")
+    ap.add_argument("csv", nargs="?",
+                    help="returns CSV; omit to run the built-in selftest")
+    ap.add_argument("--truth", help="file listing the genuinely skilled column "
+                                    "names, one per line, to score the answer")
+    ap.add_argument("--target", type=float, default=0.05,
+                    help="target for the criterion (default 0.05)")
+    ap.add_argument("--criterion", default="fdr", choices=("fdr", "oratio"),
+                    help="what the target refers to (default fdr)")
+    ap.add_argument("--p0", type=float,
+                    help="assumed fraction of non-null strategies; omit to print "
+                         "the whole curve instead of one number")
+    ap.add_argument("--n-boot", type=int, default=1000)
+    ap.add_argument("--seed", type=int, default=0)
+    args = ap.parse_args(argv)
+
+    if not args.csv:
+        _selftest()
+        return 0
+
+    names, panel = _read_panel(args.csv)
+    m, T = len(panel), len(panel[0])
+    ts = [t_stat(s) for s in panel]
+    truth = _read_truth(args.truth)
+
+    print(f"{m} strategies, {T} periods each")
+    ranked = sorted(zip(names, ts), key=lambda p: -abs(p[1]))
+    print(f"  |t| range           {abs(ranked[-1][1]):.2f} .. {abs(ranked[0][1]):.2f}")
+
+    # Bonferroni is the comparison everyone already knows, so it is the baseline.
+    bonf = _normal_quantile(1.0 - 0.05 / (2 * m))
+    print(f"\n  Bonferroni 5%       |t| >= {bonf:.2f}"
+          f"   -> {sum(1 for t in ts if abs(t) >= bonf)} discoveries")
+    if truth:
+        f, mi, fp = _score(names, ts, bonf, truth)
+        print(f"                       finds {len(f)}/{len(truth)} skilled, "
+              f"{len(fp)} false")
+
+    single = fdr_hurdle(panel, target_fdr=args.target, n_boot=args.n_boot,
+                        seed=args.seed)
+    # .discoveries is the list of surviving column indices, not a count.
+    print(f"\n  FDR hurdle          |t| >= {single.hurdle:.2f}"
+          f"   -> {len(single.discoveries)} discoveries   "
+          f"(target FDR {args.target:g}, expected false "
+          f"{single.expected_false_at_hurdle:.2f})")
+    if truth:
+        f, mi, fp = _score(names, ts, single.hurdle, truth)
+        print(f"                       finds {len(f)}/{len(truth)} skilled, "
+              f"{len(fp)} false")
+
+    print(f"\n  Harvey & Liu double bootstrap, criterion {args.criterion} "
+          f"<= {args.target:g}")
+    grid = [(args.p0, harvey_liu_hurdle(panel, args.p0, args.target,
+                                        criterion=args.criterion, seed=args.seed))] \
+        if args.p0 is not None else hurdle_curve(panel, target=args.target,
+                                                 criterion=args.criterion,
+                                                 seed=args.seed)
+    head = f"    {'p0':>6}{'hurdle':>9}{'TYPE1':>8}{'TYPE2':>8}{'ORATIO':>9}{'disc':>6}"
+    print(head + ("  skilled  false" if truth else ""))
+    for p0, v in grid:
+        disc = sum(1 for t in ts if abs(t) >= v.hurdle)
+        line = (f"    {p0:>6.3f}{v.hurdle:>9.2f}{v.type1_at:>8.3f}"
+                f"{v.type2_at:>8.3f}{v.oratio_at:>9.2f}{disc:>6}")
+        if truth:
+            f, mi, fp = _score(names, ts, v.hurdle, truth)
+            line += f"{len(f):>9}/{len(truth)}{len(fp):>7}"
+        # With no alternatives in the pseudo-population there is nothing to miss,
+        # so any criterion built on misses is satisfied at a hurdle of zero and
+        # every strategy "survives". That is a degenerate pass, not a result.
+        if v.n_alt == 0:
+            line += "   <- degenerate: p0 assumes nothing is real"
+        print(line)
+
+    if truth:
+        print(f"\n  ground truth: {', '.join(sorted(truth))}")
+    return 0
+
+
 if __name__ == "__main__":
-    _selftest()
+    import sys as _sys
+    _sys.exit(_cli())

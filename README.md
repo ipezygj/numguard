@@ -33,6 +33,27 @@ exactly). A resampler that silently does nothing fails those.
 The Deflated Sharpe Ratio lives in [`numguard/backtest.py`](numguard/backtest.py).
 Pure `math` + seeded `random`; no numpy, no scipy. MIT.
 
+**Run it on a panel whose answer is known** — fifty strategies, three of them genuinely
+skilled, so a hurdle can be scored instead of admired
+([`examples/`](examples/README.md)):
+
+```bash
+python -m numguard.fdr examples/returns_50_strategies.csv \
+    --truth examples/returns_50_strategies.truth.txt
+```
+
+```
+  Bonferroni 5%       |t| >= 3.29   -> 1 discoveries
+                       finds 1/3 skilled, 0 false
+  FDR hurdle          |t| >= 3.40   -> 1 discoveries   (target FDR 0.05)
+                       finds 1/3 skilled, 0 false
+```
+
+Add `--criterion oratio --target 0.1` to price a false discovery at ten times a miss: on
+that panel the hurdle falls to `|t| >= 2.35` and recovers all three, with no false
+positives. Point it at your own CSV — one column per strategy you actually ran — and it
+does the same for your search history.
+
 *Everything below is the agent-facing packaging of those same checks — an MCP server, signed
 receipts, and metering. The statistics do not depend on any of it.*
 
