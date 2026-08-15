@@ -20,10 +20,16 @@ in both halves of the paper's title:
   cannot hide the assumption that produced it.
 
 ORATIO is the one to target when the two errors cost different amounts — the paper's own
-example is that if a false discovery costs ten times a miss, the target is `1/10`. On a
-50-strategy panel with 3 genuinely skilled strategies planted, that pricing moves the hurdle
-from `|t| ≥ 3.29` (Bonferroni, finds 1 of 3) to `|t| ≥ 1.70` at equal cost (finds 3 of 3, with
-3 false positives) — and unlike a convention, it tells you the miss rate it is buying.
+example is that if a false discovery costs ten times a miss, the target is `1/10`. On the
+50-strategy panel in [`examples/`](examples/README.md), with 3 genuinely skilled strategies
+planted among 47 nulls, Bonferroni sets `|t| ≥ 3.29` and finds 1 of the 3. Pricing the two
+errors at ten to one moves the hurdle to `|t| ≥ 2.35` at `p0 = 0.02`, which recovers all 3
+with no false positives. Every number in that sentence comes out of one command, and the
+panel ships with its ground truth so you can check the claim rather than take it.
+
+The same table shows what a convention cannot: at `p0 = 0.05` the hurdle rises to `2.90` and
+the recovery falls back to 1 of 3. `p0` is an assumption, not an estimate, and it changes the
+answer — which is why `hurdle_curve` reports the grid instead of a number.
 
 Tests: **[`tests/test_fdr.py`](tests/test_fdr.py)** — the ones worth a minute check estimators
 against analytic values they were never told: `E[#null ≥ h] = m·2(1−Φ(h))` for the null pool,

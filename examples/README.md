@@ -43,11 +43,20 @@ python -m numguard.fdr examples/returns_50_strategies.csv \
 ```
 
 At `p0 = 0.02` the hurdle falls to `|t| >= 2.35` and recovers all three, with no
-false positives on this panel. The true fraction here is `3/50 = 0.06`, so the
-row that does best is the one whose assumption is closest to the truth. That is
-the honest lesson and also the uncomfortable one: **`p0` is an input, and the
-answer moves with it.** `hurdle_curve` prints the whole grid for that reason, so
-a single number cannot hide the assumption that produced it.
+false positives on this panel.
+
+Do not read that as "assume less and find more". The true fraction here is
+`3/50 = 0.06`, and the row nearest it, `p0 = 0.05`, recovers only 1 of 3 at
+`|t| >= 2.90`. The row that performs best is not the row whose assumption is
+most nearly right, and the hurdle across the grid is not monotone in `p0`
+(2.35, 2.90, 2.85, 2.65, 2.55). One panel of fifty is far too small to say
+whether that pattern means anything; it is reported here because hiding it
+would be worse.
+
+The lesson that does survive is the uncomfortable one: **`p0` is an input, and
+the answer moves with it.** `hurdle_curve` prints the whole grid for exactly
+that reason, so a single number cannot travel without the assumption that
+produced it.
 
 The first two rows are labelled degenerate because they are. If you assume
 nothing in the panel is real, nothing can be missed, any criterion about misses
