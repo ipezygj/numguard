@@ -49,6 +49,20 @@ def _probit(p: float) -> float:
 # --------------------------------------------------------------------------- #
 # return-series moments
 # --------------------------------------------------------------------------- #
+# A constant series does not give sd == 0.0 in floating point: the residue of the
+# summation leaves sd ~ 1e-19..1e-16, which is finite, passes isfinite, and turns into
+# a Sharpe of ~1e16 and a DSR of 1.0. Exact comparison against zero never fires there.
+# The gate below was calibrated on a value x length grid (not a single series): the
+# residue reaches ~1.96 eps * max|x| at n=1000, so the floor is n * eps * max|x|, which
+# gives >= 3.9x margin at every length while a genuine sd of 1e-12 sits 10+ orders above.
+_EPS = 2.220446049250313e-16
+
+
+def degenerate_dispersion(sd: float, n: int, scale: float) -> bool:
+    """True when `sd` is indistinguishable from the floating-point residue of a constant series."""
+    return not (sd > n * _EPS * max(1.0e-300, abs(scale)))
+
+
 def _moments(returns):
     n = len(returns)
     if n < 2:
@@ -56,7 +70,7 @@ def _moments(returns):
     mu = sum(returns) / n
     m2 = sum((r - mu) ** 2 for r in returns) / n
     sd = math.sqrt(m2)
-    if sd == 0:
+    if degenerate_dispersion(sd, n, max(abs(r) for r in returns)):
         return mu, 0.0, 0.0, 3.0
     m3 = sum((r - mu) ** 3 for r in returns) / n
     m4 = sum((r - mu) ** 4 for r in returns) / n

@@ -685,3 +685,43 @@ def test_proof_gallery_is_honest_and_verifiable():
     assert any(e["survives"] for e in entries), "a credible gallery must let real signal through"
     assert any(not e["survives"] for e in entries), "a credible gallery must flag the fakes"
     assert all(S.verify_any(e["receipt"])["valid"] for e in entries), "every gallery receipt must verify"
+
+
+# --------------------------------------------------------------------------- #
+# constant-series gate — calibrated on a grid, not on one series
+# (a single-point calibration passed [0.001]*250 and leaked at other lengths)
+# --------------------------------------------------------------------------- #
+_CONST_VALS = [1e-6, 1e-4, 1e-3, 0.01, 0.1, 0.3, 1.0, 3.7, 10.0, 123.456, 1e3, 1e6]
+_CONST_LENS = [3, 7, 10, 50, 100, 250, 252, 500, 1000, 2520, 5000, 10000]
+
+
+def test_constant_series_never_yields_a_dsr_on_the_grid():
+    import pytest
+    from numguard.backtest import deflated_sharpe, sharpe, _moments
+    from numguard import forward as fw
+    checked = 0
+    for v in _CONST_VALS:
+        for n in _CONST_LENS:
+            x = [v] * n
+            assert _moments(x)[1] == 0.0, (v, n, _moments(x))
+            with pytest.raises(ValueError):
+                sharpe(x)
+            with pytest.raises(ValueError):
+                deflated_sharpe(x, n_trials=10, sr_std=0.5)
+            assert fw._moments(x)[1] == 0.0, (v, n)
+            st = fw.stream_init()
+            for r in x:
+                fw.stream_update(st, r)
+            assert fw.stream_stats(st)[2] == 0.0, (v, n, fw.stream_stats(st))
+            checked += 1
+    assert checked == len(_CONST_VALS) * len(_CONST_LENS)
+
+
+def test_gate_does_not_swallow_genuine_tiny_dispersion():
+    import random
+    from numguard.backtest import _moments, sharpe
+    rng = random.Random(1)
+    for n in (50, 1000, 10000):
+        x = [0.001 + rng.gauss(0, 1e-12) for _ in range(n)]
+        assert _moments(x)[1] > 1e-13
+        assert sharpe(x) > 0

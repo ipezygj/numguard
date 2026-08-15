@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-from .backtest import _norm_cdf, sharpe as _sharpe
+from .backtest import _norm_cdf, sharpe as _sharpe, degenerate_dispersion
 
 
 def _moments(x: Sequence[float]):
@@ -24,8 +24,8 @@ def _moments(x: Sequence[float]):
     m = sum(x) / n
     s2 = sum((v - m) ** 2 for v in x) / n
     sd = math.sqrt(s2) if s2 > 0 else 0.0
-    if sd == 0:
-        return m, sd, 0.0, 3.0
+    if degenerate_dispersion(sd, n, max(abs(v) for v in x)):
+        return m, 0.0, 0.0, 3.0
     sk = sum(((v - m) / sd) ** 3 for v in x) / n
     ku = sum(((v - m) / sd) ** 4 for v in x) / n
     return m, sd, sk, ku
@@ -65,7 +65,9 @@ def stream_stats(s: dict):
         return n, s["mean"], 0.0, 0.0, 3.0
     var = s["M2"] / n
     sd = var ** 0.5 if var > 0 else 0.0
-    if sd == 0:
+    # streaming state keeps no raw values, so the running |mean| stands in for max|x|
+    # (for a constant series they coincide, and that is the series this gate exists for)
+    if degenerate_dispersion(sd, n, s["mean"]):
         return n, s["mean"], 0.0, 0.0, 3.0
     skew = (s["M3"] / n) / (var ** 1.5)
     kurt = (s["M4"] / n) / (var * var)      # non-excess (normal = 3)
