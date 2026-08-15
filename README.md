@@ -1,14 +1,35 @@
 # numguard
 
 **The statistics, first.** The data-driven t-stat hurdle of Harvey & Liu, *False (and Missed)
-Discoveries in Financial Economics*, **JF 2020**, is in **[`numguard/fdr.py`](numguard/fdr.py)**:
-demean the trial panel, resample the time index with the same draws for every trial so the
-cross-trial correlation survives, then take the smallest hurdle whose estimated FDR meets your
-target. Its docstring states plainly what it is **not** — a single-bootstrap core, all trials
-treated as null when counting expected false discoveries, and the optional outer bootstrap
-reporting sampling variability of the hurdle rather than the paper's double-bootstrap p-value
-calibration. Tests: **[`tests/test_fdr.py`](tests/test_fdr.py)** — the one worth a minute checks
-the estimator against an analytic value it was never told, `E[#null ≥ h] = m·2(1−Φ(h))`.
+Discoveries in Financial Economics*, **JF 2020**, is in **[`numguard/fdr.py`](numguard/fdr.py)**,
+in both halves of the paper's title:
+
+- **`fdr_hurdle`** — the single-bootstrap core. Demean the trial panel, resample the time index
+  with the same draws for every trial so the cross-trial correlation survives, then take the
+  smallest hurdle whose estimated FDR meets your target. All trials are treated as null when
+  counting expected false discoveries (conservative, like BH with `m0 = m`). Because it never
+  represents the alternative, it says nothing about **missed** discoveries.
+- **`harvey_liu_hurdle`** — the paper's actual double bootstrap, Steps I–IV. The outer loop
+  builds a pseudo-population in which a fraction `p0` of strategies are genuinely non-null,
+  with effect sizes taken from a bootstrap draw rather than from the in-sample winners; the
+  inner loop resamples it and counts outcomes against that known truth. That is what makes
+  misses countable, so this half reports **TYPE1**, **TYPE2** (the false omission rate,
+  `FN/(FN+TN)` — deliberately the mirror of FDR, not `1−power`) and **ORATIO**, the odds of a
+  false discovery per miss. `p0` is an argument, not an estimate, because the paper conditions
+  on it rather than estimating it; **`hurdle_curve`** reports across its grid so a single number
+  cannot hide the assumption that produced it.
+
+ORATIO is the one to target when the two errors cost different amounts — the paper's own
+example is that if a false discovery costs ten times a miss, the target is `1/10`. On a
+50-strategy panel with 3 genuinely skilled strategies planted, that pricing moves the hurdle
+from `|t| ≥ 3.29` (Bonferroni, finds 1 of 3) to `|t| ≥ 1.70` at equal cost (finds 3 of 3, with
+3 false positives) — and unlike a convention, it tells you the miss rate it is buying.
+
+Tests: **[`tests/test_fdr.py`](tests/test_fdr.py)** — the ones worth a minute check estimators
+against analytic values they were never told: `E[#null ≥ h] = m·2(1−Φ(h))` for the null pool,
+and, for the double bootstrap, the two cutoffs at which the contingency table is fixed by
+construction regardless of the data (at cutoff 0, `RFDR = (m−n_alt)/m` and `RMISS = 0`
+exactly). A resampler that silently does nothing fails those.
 The Deflated Sharpe Ratio lives in [`numguard/backtest.py`](numguard/backtest.py).
 Pure `math` + seeded `random`; no numpy, no scipy. MIT.
 

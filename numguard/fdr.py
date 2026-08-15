@@ -18,10 +18,15 @@ Method (single-bootstrap core of Harvey & Liu 2020):
   4. for a candidate hurdle h: estimated FDR(h) = E[# null trials >= h] / max(1, # real trials >= h);
   5. the hurdle is the smallest h whose FDR estimate (and that of every stricter h) is <= the target.
 
-Honest simplifications vs the paper: this treats ALL trials as null when counting expected false
-discoveries (conservative, like Benjamini-Hochberg with m0 = m), and the optional outer bootstrap
-(`n_outer`) reports sampling variability of the hurdle rather than the paper's full double-bootstrap
-p-value calibration. Type II (missed discoveries) is reported descriptively, not optimized.
+`fdr_hurdle` is the single-bootstrap core: it treats ALL trials as null when counting expected false
+discoveries (conservative, like Benjamini-Hochberg with m0 = m), and its optional `n_outer` reports
+sampling variability of the hurdle. Because it never represents the alternative, it cannot say anything
+about MISSED discoveries — which is half of the paper's title.
+
+`harvey_liu_hurdle` in the second half of this module is the paper's actual double bootstrap (Steps I-IV),
+which builds a pseudo-population with a known truth and so reports Type I, Type II (false omission rate)
+and ORATIO together. It costs I*J panel resamples; `fdr_hurdle` costs n_boot. Use the cheap one to screen,
+the faithful one to report.
 
 Pure `math` + seeded `random` — no numpy/scipy — so an agent can call it anywhere, deterministically.
 """
@@ -185,6 +190,217 @@ def _hurdle_from_panel(panel, obs, T, m, target_fdr, n_boot, seed, grid_step):
 
 
 # --------------------------------------------------------------------------- #
+# the double bootstrap of Harvey & Liu (2020), Steps I-IV
+# --------------------------------------------------------------------------- #
+#
+#   Step I.   Bootstrap the time periods; let the bootstrapped panel be X_i and its
+#             1 x N vector of t-statistics be t_i.
+#   Step II.  Rank t_i. For the top p0 of strategies, take the corresponding series in
+#             the ORIGINAL data X_0 and shift them to have the same means as those
+#             strategies have in X_i. Shift every remaining series to zero mean. Call
+#             the result Y_i. In Y_i we KNOW which strategies are alternatives (the top
+#             p0) and which are nulls (the rest) — that is what makes misses countable.
+#   Step III. Bootstrap Y_i J times; at each cutoff count TP/FP/TN/FN against that known
+#             truth and compute the realised error rates.
+#   Step IV.  Repeat I times; average over I*J.
+#
+# Why Step II takes the means from X_i and not from X_0: the top of X_0 is the winner of
+# a search, so its in-sample mean is inflated by the selection itself. Ranking on a
+# bootstrap draw and using that draw's means is the paper's way of putting a less
+# selection-biased effect size into the alternative.
+#
+# Error rates, as defined in the paper's Section I:
+#   RFDR   = FP/(FP+TP) if FP+TP > 0 else 0   -> averaged over I*J: TYPE1
+#   RMISS  = FN/(FN+TN) if FN+TN > 0 else 0   -> averaged over I*J: TYPE2
+#   RRATIO = FP/FN      if FN    > 0 else 0   -> averaged over I*J: ORATIO
+#
+# TYPE2 is the FALSE OMISSION RATE — misses as a share of everything you declared
+# insignificant — deliberately the mirror of FDR, not the textbook 1-power.
+#
+# ORATIO is the odds of a false discovery per miss, and it is the number to target when
+# the two errors cost different amounts. The paper's own example: "if an investor
+# believes that the cost of a Type I error is 10 times that of a Type II error, then the
+# optimal ORATIO should be 1/10."
+#
+# p0 is NOT estimated here, because the paper does not estimate it either: it conditions
+# on p0 and reports the answer across plausible values (their applications use 0, 0.5%,
+# 2%, 5%, 10%, 15%, 20%). Hence p0 is a required argument and `hurdle_curve` exists.
+#
+# Paper's parameters: I = 100, J = 100 (10,000 simulations).
+
+
+@dataclass
+class DoubleBootstrapVerdict:
+    m: int
+    T: int
+    p0: float                   # ASSUMED fraction of strategies that are truly non-null (an input)
+    n_alt: int                  # round(p0 * m): how many are treated as alternatives
+    hurdle: float               # smallest cutoff meeting the target
+    target: float
+    criterion: str              # "fdr" (target TYPE1) or "oratio" (target ORATIO)
+    type1_at: float             # TYPE1 at the hurdle
+    type2_at: float             # TYPE2 at the hurdle
+    oratio_at: float            # ORATIO at the hurdle
+    cutoffs: list = field(repr=False)
+    type1: list = field(repr=False)
+    type2: list = field(repr=False)
+    oratio: list = field(repr=False)
+    n_outer: int = 0
+    n_inner: int = 0
+    seed: int = 0
+    note: str = ""
+
+    def __str__(self) -> str:
+        what = "TYPE1" if self.criterion == "fdr" else "ORATIO"
+        return (f"Harvey-Liu double bootstrap: |t| >= {self.hurdle:.2f} at target {what} "
+                f"{self.target:.3g} (assumed p0={self.p0:.1%} -> {self.n_alt}/{self.m} alternatives, "
+                f"T={self.T}); TYPE1={self.type1_at:.3f} TYPE2={self.type2_at:.3f} "
+                f"ORATIO={self.oratio_at:.2f}" + (f" | {self.note}" if self.note else ""))
+
+
+def double_bootstrap_errors(panel, p0: float, cutoffs=None, n_outer: int = 100,
+                            n_inner: int = 100, seed: int = 0):
+    """TYPE1, TYPE2 and ORATIO at every cutoff, by Steps I-IV above.
+
+    Returns (cutoffs, type1, type2, oratio, m, T, n_alt).
+
+    `p0` is the ASSUMED fraction of genuinely non-null strategies — an input, not an
+    estimate. Cost is n_outer * n_inner resamples of the whole panel, so the paper's
+    100 x 100 takes real time in pure Python; if you lower them, say so when you report
+    the number (the verdict's `note` does this for you).
+    """
+    if not 0.0 <= p0 < 1.0:
+        raise ValueError("need 0 <= p0 < 1 (p0 is the assumed non-null fraction, not a p-value)")
+    if n_outer < 1 or n_inner < 1:
+        raise ValueError("n_outer and n_inner must both be >= 1")
+    T = _check_panel(panel)
+    m = len(panel)
+    n_alt = int(round(p0 * m))
+    if cutoffs is None:
+        cutoffs = [round(0.05 * k, 10) for k in range(121)]      # 0.00 .. 6.00
+    cutoffs = list(cutoffs)
+    n_c = len(cutoffs)
+
+    rng = random.Random(seed)
+    centred = [[x - sum(s) / T for x in s] for s in panel]
+    raw_sq = [[x * x for x in s] for s in panel]
+
+    sum1 = [0.0] * n_c
+    sum2 = [0.0] * n_c
+    sumr = [0.0] * n_c
+    draws = 0
+
+    for _ in range(n_outer):
+        # ---- Step I ----------------------------------------------------------
+        idx = [rng.randrange(T) for _ in range(T)]
+        t_i, boot_mu = [], []
+        for s, sq in zip(panel, raw_sq):
+            s1 = s2 = 0.0
+            for j in idx:
+                s1 += s[j]
+                s2 += sq[j]
+            mu = s1 / T
+            var = (s2 - T * mu * mu) / (T - 1)
+            boot_mu.append(mu)
+            t_i.append(0.0 if var <= 1e-18 else mu / math.sqrt(var / T))
+
+        # ---- Step II: top p0 by t_i become the alternatives, with X_i's means ----
+        order = sorted(range(m), key=lambda k: t_i[k], reverse=True)
+        is_alt = [False] * m
+        for k in order[:n_alt]:
+            is_alt[k] = True
+        y_vals, y_sq = [], []
+        for k in range(m):
+            shift = boot_mu[k] if is_alt[k] else 0.0
+            row = [x + shift for x in centred[k]] if shift else centred[k]
+            y_vals.append(row)
+            y_sq.append([x * x for x in row])
+
+        # ---- Step III: resample Y_i, count against the known truth ------------
+        for _ in range(n_inner):
+            jdx = [rng.randrange(T) for _ in range(T)]
+            all_abs, alt_abs = [], []
+            for k in range(m):
+                a = abs(_resampled_t(y_vals[k], y_sq[k], jdx, T))
+                all_abs.append(a)
+                if is_alt[k]:
+                    alt_abs.append(a)
+            all_abs.sort()
+            alt_abs.sort()
+            for ci, c in enumerate(cutoffs):
+                # counting by bisect, not by rescanning m strategies per cutoff
+                n_sig = m - bisect_left(all_abs, c)
+                tp = n_alt - bisect_left(alt_abs, c)
+                fp = n_sig - tp
+                fn = n_alt - tp
+                tn = m - n_alt - fp
+                if fp + tp > 0:
+                    sum1[ci] += fp / (fp + tp)
+                if fn + tn > 0:
+                    sum2[ci] += fn / (fn + tn)
+                if fn > 0:
+                    sumr[ci] += fp / fn
+            draws += 1
+
+    d = float(draws)
+    return (cutoffs, [x / d for x in sum1], [x / d for x in sum2], [x / d for x in sumr],
+            m, T, n_alt)
+
+
+def harvey_liu_hurdle(panel, p0: float, target: float = 0.05, criterion: str = "fdr",
+                      cutoffs=None, n_outer: int = 100, n_inner: int = 100,
+                      seed: int = 0) -> DoubleBootstrapVerdict:
+    """The t-hurdle of Harvey & Liu (2020) at a target Type I rate, or at a target odds ratio.
+
+    criterion="fdr"    -> smallest cutoff whose TYPE1 <= target.
+    criterion="oratio" -> smallest cutoff whose ORATIO <= target. Read that target as the
+                          INVERSE cost ratio: if a false discovery costs ten times a miss,
+                          the paper's own example puts the target at 1/10.
+
+    `p0` is assumed, not estimated — see `hurdle_curve` to report across plausible values,
+    which is what the paper does and what any honest single number here has to admit to.
+    """
+    if criterion not in ("fdr", "oratio"):
+        raise ValueError("criterion must be 'fdr' or 'oratio'")
+    if target <= 0:
+        raise ValueError("target must be > 0")
+    cs, t1, t2, orr, m, T, n_alt = double_bootstrap_errors(
+        panel, p0, cutoffs, n_outer, n_inner, seed)
+    series = t1 if criterion == "fdr" else orr
+
+    # conservative pick, as in fdr_hurdle: every STRICTER cutoff must also meet the target
+    hurdle = cs[-1]
+    tail_max = 0.0
+    for c, v in zip(reversed(cs), reversed(series)):
+        tail_max = max(tail_max, v)
+        if tail_max <= target:
+            hurdle = c
+    i = cs.index(hurdle)
+
+    note = ""
+    if n_alt == 0:
+        note = ("p0 rounds to 0 alternatives: TYPE2 and ORATIO are degenerate by construction, "
+                "only TYPE1 is meaningful here")
+    elif n_alt == m:
+        note = "p0 rounds to ALL strategies: there are no nulls left, so TYPE1 is 0 by construction"
+    elif n_outer * n_inner < 2500:
+        note = f"only {n_outer}x{n_inner}={n_outer * n_inner} simulations (the paper uses 100x100)"
+    return DoubleBootstrapVerdict(m, T, p0, n_alt, hurdle, target, criterion,
+                                  t1[i], t2[i], orr[i], cs, t1, t2, orr,
+                                  n_outer, n_inner, seed, note)
+
+
+def hurdle_curve(panel, p0_grid=(0.0, 0.005, 0.02, 0.05, 0.10, 0.15, 0.20),
+                 target: float = 0.05, **kw):
+    """The hurdle as a function of the assumed p0 — the paper's own grid as the default.
+
+    Reporting one hurdle hides the assumption that produced it. Reporting the curve makes
+    the reader supply their own p0, which is the honest interface.
+    """
+    return [(p0, harvey_liu_hurdle(panel, p0, target, **kw)) for p0 in p0_grid]
+
+
+# --------------------------------------------------------------------------- #
 # selftest — analytic rung + planted signal + null control + determinism
 # --------------------------------------------------------------------------- #
 def _selftest():
@@ -226,7 +442,72 @@ def _selftest():
         except ValueError:
             pass
 
+    _selftest_double_bootstrap()
     print("fdr selftest: OK (analytic E[V] rung, null control, planted signal, determinism, guards)")
+
+
+def _selftest_double_bootstrap():
+    """Steps I-IV: two analytic rungs that bypass the bootstrap, plus the p0 direction."""
+    rng = random.Random(11)
+    m, T = 20, 120
+    panel = [[rng.gauss(0, 1) for _ in range(T)] for _ in range(m - 4)]
+    panel += [[rng.gauss(4.0 / math.sqrt(T), 1) for _ in range(T)] for _ in range(4)]
+    kw = dict(n_outer=15, n_inner=15, seed=3)
+
+    cs, t1, t2, orr, mm, TT, n_alt = double_bootstrap_errors(panel, 0.20, **kw)
+    assert (mm, TT, n_alt) == (m, T, 4)
+
+    # RUNG 1 (analytic, no bootstrap involved): at cutoff 0 EVERY strategy is declared
+    # significant, so TP=n_alt, FP=m-n_alt, FN=TN=0 exactly, whatever the data did.
+    #   RFDR = (m-n_alt)/m = 1-p0 ;  RMISS = 0 (empty denominator) ;  RRATIO = 0 (FN=0)
+    assert cs[0] == 0.0
+    assert abs(t1[0] - (m - n_alt) / m) < 1e-12, (t1[0], (m - n_alt) / m)
+    assert t2[0] == 0.0 and orr[0] == 0.0, (t2[0], orr[0])
+
+    # RUNG 2 (analytic): at a cutoff nothing can clear, NOTHING is declared significant,
+    # so FP=TP=0 (RFDR=0 by the paper's convention) and FN=n_alt, TN=m-n_alt exactly.
+    cs2, u1, u2, u3, *_ = double_bootstrap_errors(panel, 0.20, cutoffs=[99.0], **kw)
+    assert u1[0] == 0.0 and u3[0] == 0.0, (u1[0], u3[0])
+    assert abs(u2[0] - n_alt / m) < 1e-12, (u2[0], n_alt / m)
+
+    # error rates move in the directions the definitions force
+    assert t1[0] > t1[-1], (t1[0], t1[-1])       # stricter cutoff -> fewer false discoveries
+    assert t2[0] < t2[-1], (t2[0], t2[-1])       # stricter cutoff -> more misses
+
+    # p0 direction: more true alternatives means more true positives at any cutoff, so the
+    # FDR target is met sooner and the hurdle cannot rise. At p0=0 there are no possible
+    # true positives at all, so RFDR is 1 whenever any null clears — TYPE1 degenerates to
+    # the FAMILY-WISE error rate and the hurdle is correspondingly the strictest.
+    h0 = harvey_liu_hurdle(panel, 0.0, 0.05, **kw).hurdle
+    h20 = harvey_liu_hurdle(panel, 0.20, 0.05, **kw).hurdle
+    assert h0 >= h20, (h0, h20)
+
+    # determinism, and the note that stops a cheap run being quoted as a full one
+    a = harvey_liu_hurdle(panel, 0.20, 0.05, **kw)
+    b = harvey_liu_hurdle(panel, 0.20, 0.05, **kw)
+    assert a.hurdle == b.hurdle and a.type2_at == b.type2_at
+    assert "15x15" in a.note, a.note
+    assert "p0 rounds to 0" in harvey_liu_hurdle(panel, 0.0, 0.05, **kw).note
+
+    # the odds-ratio criterion is a different question and may pick a different hurdle
+    o = harvey_liu_hurdle(panel, 0.20, 0.10, criterion="oratio", **kw)
+    assert o.criterion == "oratio" and o.hurdle > 0
+
+    # guards
+    for bad_p0 in (-0.01, 1.0, 1.5):
+        try:
+            harvey_liu_hurdle(panel, bad_p0, **kw)
+            raise AssertionError(f"accepted p0={bad_p0}")
+        except ValueError:
+            pass
+    try:
+        harvey_liu_hurdle(panel, 0.1, criterion="nonsense", **kw)
+        raise AssertionError("accepted a bogus criterion")
+    except ValueError:
+        pass
+
+    print("  double-bootstrap selftest: OK (2 analytic rungs, error-rate directions, "
+          "p0 monotonicity, FWER degeneracy, determinism, guards)")
 
 
 def _null_pool(panel, T, n_boot, seed):
