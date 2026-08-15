@@ -56,9 +56,12 @@ python -m numguard.fdr examples/returns_50_strategies.csv \
 ```
 
 Add `--criterion oratio --target 0.1` to price a false discovery at ten times a miss: on
-that panel the hurdle falls to `|t| >= 2.35` and recovers all three, with no false
-positives. Point it at your own CSV — one column per strategy you actually ran — and it
-does the same for your search history.
+that panel the hurdle falls to `|t| >= 2.35` **at an assumed `p0` of 2%**, recovering all
+three with no false positives. Name the assumption or the number means nothing: the same
+run prints the rest of the `p0` grid, where the hurdle rises to 2.90 and the recovery
+drops back to 1 of 3. Quoting the best row without the assumption that produced it is
+exactly what `hurdle_curve` exists to prevent. Point it at your own CSV — one column per
+strategy you actually ran — and it does the same for your search history.
 
 *Everything below is the agent-facing packaging of those same checks — an MCP server, signed
 receipts, and metering. The statistics do not depend on any of it.*
