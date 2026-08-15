@@ -16,7 +16,7 @@ from . import credits, x402
 
 # Pinned to pyproject by test_package_api.py — a package that misreports its own
 # version is the smallest possible version of the thing this library exists to catch.
-__version__ = "0.2.3"
+__version__ = "0.2.4"
 __all__ = [
     "verify_claim", "KINDS",
     "deflated_sharpe", "probabilistic_sharpe_ratio", "expected_max_sharpe", "cost_haircut", "sharpe",
